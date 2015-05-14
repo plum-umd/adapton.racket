@@ -68,5 +68,5 @@
      (cons (car l)
            (λ () (merge (l-cdr l) r)))]
     [else
-     (cons (first r)
+     (cons (car r)
            (λ () (merge l (l-cdr r))))]))
