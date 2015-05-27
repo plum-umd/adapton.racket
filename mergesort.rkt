@@ -1,11 +1,16 @@
 #lang racket
 
-(require (prefix-in r: (only-in racket delay force)))
-
+(require (prefix-in r: (only-in racket delay force equal-hash-code)))
 
 ;;create a top level table to hold a memo table for each function
 (define *memo-tables* 
   (make-hasheq))
+
+#;(define (equal-hash-code v)
+    (displayln v)
+    (let ([out (r:equal-hash-code v)])
+      (displayln out)
+      out))
 
 ;; the matt structure consists of a function and its memo table
 ;; matt structures can be applied like functions on a list of arguments
@@ -31,30 +36,57 @@
 ;; then extract the thunk from the node
 ;; and force it. 
 (define (memo m . xs)
-  (force (node-thunk (apply delay m xs))))
+  (begin
+    (update-stack m (first xs))
+    (displayln stack)
+    (let ([out (force (node-thunk (apply delay m xs)))])
+      (set-box! stack (rest (unbox stack)))
+      out)))
 
 ;; given a funciton and arguments, 
 ;; add the arguments as a key in the hash-table for the function
 ;; and create a node-value for that key
 (define (delay m . xs)
+  ;(displayln xs)
   (match m
     [(matt f mt)
-     (hash-ref! mt xs (node (next-node-number)
-                            '() 
-                            (r:delay (apply f xs))))]))
+     (hash-ref! mt 
+                (equal-hash-code (cons f xs))
+                (node '()
+                      (r:delay (apply f xs))))]))
+
+;; update-stack appends the currently running node to the 
+;; top of the stack
+(define (update-stack m . xs)
+  ;(displayln xs)
+  (match m
+    [(matt f mt)
+     (let ([s (unbox stack)]
+           [hash (equal-hash-code (cons f xs))])
+       (begin
+         (set-box! stack (cons hash (unbox stack)))
+         (cond
+           [(empty? s) (displayln "s is empty")]
+           [else (update-successors m (first s) hash)])))]))
+
+(define (update-successors m pred succ)
+  (match m
+    [(matt f mt)
+     (displayln (matt-table merge-sort))
+     (let ([old (hash-ref (matt-table merge-sort) pred)])
+       (hash-set! (matt-table merge-sort) pred (node (cons (node-edges old) succ)
+                                (node-thunk old))))]))
+
 
 ;; ============================================================
 
-
-;; ensures each node has a unique number id
-(define node-number (box 0))
-(define (next-node-number)
-  (let ([out (unbox node-number)])
-    (set-box! node-number (+ 1 out))
-    out))
+;; this stack keeps track of the "currently running" thunk
+;; by adding it to the front of the list. The rest of the 
+;; consists of the parents of the currently running thunk.
+(define stack (box empty))
 
 ;; a node consists of an id, edges to its children, and a thunk
-(struct node (id edges thunk))
+(struct node (edges thunk))
 
 ;; ============================================================
 
@@ -83,9 +115,7 @@
              (merge-sort-helper (l-cdr (l-cdr l))))]))
 
 (define/memo (merge l r)
-  (display l)
-  (displayln r)
-  (cond
+  (cond 
     [(and (empty? l) (empty? r)) '()]
     [(empty? l) r]
     [(empty? r) l]
