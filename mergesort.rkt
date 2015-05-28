@@ -6,12 +6,6 @@
 (define *memo-tables* 
   (make-hasheq))
 
-#;(define (equal-hash-code v)
-    (displayln v)
-    (let ([out (r:equal-hash-code v)])
-      (displayln out)
-      out))
-
 ;; the matt structure consists of a function and its memo table
 ;; matt structures can be applied like functions on a list of arguments
 ;; "xs"
@@ -38,7 +32,7 @@
 (define (memo m . xs)
   (begin
     (update-stack m (first xs))
-    (displayln stack)
+    ;(displayln stack)
     (let ([out (force (node-thunk (apply delay m xs)))])
       (set-box! stack (rest (unbox stack)))
       out)))
@@ -47,9 +41,10 @@
 ;; add the arguments as a key in the hash-table for the function
 ;; and create a node-value for that key
 (define (delay m . xs)
-  ;(displayln xs)
+  (displayln (equal-hash-code m))
   (match m
     [(matt f mt)
+     (displayln "delay")
      (hash-ref! mt 
                 (equal-hash-code (cons f xs))
                 (node '()
@@ -58,25 +53,64 @@
 ;; update-stack appends the currently running node to the 
 ;; top of the stack
 (define (update-stack m . xs)
-  ;(displayln xs)
   (match m
     [(matt f mt)
+     (displayln "update stack")
+     (displayln (equal-hash-code m))
      (let ([s (unbox stack)]
            [hash (equal-hash-code (cons f xs))])
        (begin
-         (set-box! stack (cons hash (unbox stack)))
-         (cond
+         (set-box! stack (cons (cons mt hash) s))
+         (cond 
            [(empty? s) (displayln "s is empty")]
-           [else (update-successors m (first s) hash)])))]))
+           [else (update-successors (car (car s)) 
+                                    (cdr (car s)) 
+                                    hash)])))]))
 
-(define (update-successors m pred succ)
-  (match m
-    [(matt f mt)
-     (displayln (matt-table merge-sort))
-     (let ([old (hash-ref (matt-table merge-sort) pred)])
-       (hash-set! (matt-table merge-sort) pred (node (cons (node-edges old) succ)
-                                (node-thunk old))))]))
+(define (update-successors mt pred succ)
+  (displayln mt)
+  (let ([old (hash-ref mt pred)])
+    (hash-set! mt pred (node (cons succ (node-edges old))
+                             (node-thunk old)))))
 
+;; ===========================================================
+;; build graph
+
+;; nodes
+(define node-ids (box '()))
+
+;; children
+(define node-children (box '()))
+
+(define (make-nodes)
+  (let ([ids
+         (hash-map *memo-tables* (λ (a b) (hash-map b (λ (a b) a))))]
+        [children
+         (hash-map *memo-tables* (λ (a b) (hash-map b (λ (a b) (node-edges b)))))])
+    (set-box! node-ids ids)
+    (set-box! node-children children)))
+
+(define (build-graph)
+  (make-nodes)
+  (e (build-graph-helper (unbox node-ids) (unbox node-children))))
+
+(define (build-graph-helper ids children)
+  (cond
+    [(empty? ids) empty]
+    [else (cons (build-graph-helper-2 (first ids) (first children))
+                (build-graph-helper (rest ids) (rest children)))]))
+
+(define (build-graph-helper-2 ids children)
+  (cond 
+    [(empty? ids) empty]
+    [else (cons (cons (first ids) (first children))
+                (build-graph-helper-2 (rest ids) (rest children)))]))
+
+(define (e l)
+  (cond 
+    [(empty? l) l]
+    [else (append (first l) (e (rest l)))]))
+  
 
 ;; ============================================================
 
