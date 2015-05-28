@@ -110,7 +110,16 @@
   (cond 
     [(empty? l) l]
     [else (append (first l) (e (rest l)))]))
-  
+
+
+(define (port-to-graphmovie l)
+  (cond
+    [(empty? l) (displayln "done")]
+    [else (begin (printf "[node ~a red]~n" (car (car l)))
+                 (for-each (λ (a) (printf "[edge ~a ~a]~n" 
+                                          (car (car l))
+                                          a)) (cdr (car l)))
+                 (port-to-graphmovie (cdr l)))]))
 
 ;; ============================================================
 
