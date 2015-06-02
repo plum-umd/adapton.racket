@@ -31,8 +31,8 @@
 ;; and force it. 
 (define (memo m . xs)
   (begin
-    (update-stack m (first xs))
-    ;(displayln stack)
+    (displayln xs)
+    (apply update-stack m xs)
     (let ([out (force (node-thunk (apply delay m xs)))])
       (set-box! stack (rest (unbox stack)))
       out)))
@@ -41,10 +41,10 @@
 ;; add the arguments as a key in the hash-table for the function
 ;; and create a node-value for that key
 (define (delay m . xs)
-  (displayln (equal-hash-code m))
   (match m
     [(matt f mt)
-     (displayln "delay")
+     (display (equal-hash-code (cons f xs)))
+     (displayln xs)
      (hash-ref! mt 
                 (equal-hash-code (cons f xs))
                 (node '()
@@ -55,10 +55,10 @@
 (define (update-stack m . xs)
   (match m
     [(matt f mt)
-     (displayln "update stack")
-     (displayln (equal-hash-code m))
      (let ([s (unbox stack)]
            [hash (equal-hash-code (cons f xs))])
+       (display hash)
+       (displayln xs)
        (begin
          (set-box! stack (cons (cons mt hash) s))
          (cond 
@@ -68,7 +68,6 @@
                                     hash)])))]))
 
 (define (update-successors mt pred succ)
-  (displayln mt)
   (let ([old (hash-ref mt pred)])
     (hash-set! mt pred (node (cons succ (node-edges old))
                              (node-thunk old)))))
