@@ -17,8 +17,7 @@
 ;; make-memo creates a memo table for the given function
 ;; in the global memo table
 (define (make-memo f)
-  (let ((mt (hash-ref! *memo-tables* f make-hash)))
-    (matt f mt)))
+  (matt f *memo-tables*))
 
 ;; define/memo creates a memoized version of a function
 (define-syntax-rule
@@ -45,7 +44,7 @@
     [(matt f mt)
      (display (equal-hash-code (cons f xs)))
      (displayln xs)
-     (hash-ref! mt 
+     (hash-ref! *memo-tables* 
                 (equal-hash-code (cons f xs))
                 (node '()
                       (r:delay (apply f xs))))]))
@@ -68,8 +67,8 @@
                                     hash)])))]))
 
 (define (update-successors mt pred succ)
-  (let ([old (hash-ref mt pred)])
-    (hash-set! mt pred (node (cons succ (node-edges old))
+  (let ([old (hash-ref *memo-tables* pred)])
+    (hash-set! *memo-tables* pred (node (cons succ (node-edges old))
                              (node-thunk old)))))
 
 ;; ===========================================================
@@ -78,32 +77,25 @@
 ;; nodes
 (define node-ids (box '()))
 
-;; children
 (define node-children (box '()))
 
 (define (make-nodes)
   (let ([ids
-         (hash-map *memo-tables* (λ (a b) (hash-map b (λ (a b) a))))]
+         (hash-map *memo-tables* (λ (a b) a))]
         [children
-         (hash-map *memo-tables* (λ (a b) (hash-map b (λ (a b) (node-edges b)))))])
+         (hash-map *memo-tables* (λ (a b) (node-edges b)))])
     (set-box! node-ids ids)
     (set-box! node-children children)))
 
 (define (build-graph)
   (make-nodes)
-  (e (build-graph-helper (unbox node-ids) (unbox node-children))))
+  (build-graph-helper (unbox node-ids) (unbox node-children)))
 
 (define (build-graph-helper ids children)
   (cond
     [(empty? ids) empty]
-    [else (cons (build-graph-helper-2 (first ids) (first children))
-                (build-graph-helper (rest ids) (rest children)))]))
-
-(define (build-graph-helper-2 ids children)
-  (cond 
-    [(empty? ids) empty]
     [else (cons (cons (first ids) (first children))
-                (build-graph-helper-2 (rest ids) (rest children)))]))
+                (build-graph-helper (rest ids) (rest children)))]))
 
 (define (e l)
   (cond 
