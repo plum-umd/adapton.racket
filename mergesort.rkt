@@ -30,7 +30,6 @@
 ;; and force it. 
 (define (memo m . xs)
   (begin
-    (displayln xs)
     (apply update-stack m xs)
     (let ([out (force (node-thunk (apply delay m xs)))])
       (set-box! stack (rest (unbox stack)))
@@ -42,8 +41,6 @@
 (define (delay m . xs)
   (match m
     [(matt f mt)
-     (display (equal-hash-code (cons f xs)))
-     (displayln xs)
      (hash-ref! *memo-tables* 
                 (equal-hash-code (cons f xs))
                 (node '()
@@ -56,8 +53,6 @@
     [(matt f mt)
      (let ([s (unbox stack)]
            [hash (equal-hash-code (cons f xs))])
-       (display hash)
-       (displayln xs)
        (begin
          (set-box! stack (cons (cons mt hash) s))
          (cond 
@@ -70,6 +65,10 @@
   (let ([old (hash-ref *memo-tables* pred)])
     (hash-set! *memo-tables* pred (node (cons succ (node-edges old))
                              (node-thunk old)))))
+
+#;(define (update-predecessors mt pred succ)
+  (let ([old (hash-ref *memo-tables succ)])
+    (hash-set! *memo-tables* succ (node (
 
 ;; ===========================================================
 ;; build graph
@@ -120,7 +119,7 @@
 (define stack (box empty))
 
 ;; a node consists of an id, edges to its children, and a thunk
-(struct node (edges thunk))
+(struct node (successors predecessors thunk))
 
 ;; ============================================================
 
