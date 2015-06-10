@@ -1,6 +1,11 @@
 #lang racket
 
-(require (prefix-in r: (only-in racket delay force equal-hash-code)))
+(require (prefix-in r: (only-in racket delay force equal-hash-code))
+         racket/format)
+
+
+
+(define name (box 1))
 
 ;;create a top level table to hold a memo table for each function
 (define *memo-tables* 
@@ -32,7 +37,7 @@
   (begin
     (apply update-stack m xs)
     (let ([out (force (node-thunk (apply delay m xs)))])
-      (set-box! stack (rest (unbox stack)))
+      (when (not (empty? (cdr (unbox stack)))) (update-predecessors))
       out)))
 
 ;; given a funciton and arguments, 
@@ -44,6 +49,7 @@
      (hash-ref! *memo-tables* 
                 (equal-hash-code (cons f xs))
                 (node '()
+                      '()
                       (r:delay (apply f xs))))]))
 
 ;; update-stack appends the currently running node to the 
@@ -54,21 +60,26 @@
      (let ([s (unbox stack)]
            [hash (equal-hash-code (cons f xs))])
        (begin
-         (set-box! stack (cons (cons mt hash) s))
+         (set-box! stack (cons hash s))
          (cond 
            [(empty? s) (displayln "s is empty")]
-           [else (update-successors (car (car s)) 
-                                    (cdr (car s)) 
+           [else (update-successors (car s)
                                     hash)])))]))
 
-(define (update-successors mt pred succ)
+(define (update-successors pred succ)
   (let ([old (hash-ref *memo-tables* pred)])
-    (hash-set! *memo-tables* pred (node (cons succ (node-edges old))
-                             (node-thunk old)))))
+    (hash-set! *memo-tables* pred (node (cons succ (node-successors old))
+                                        (node-predecessors old)
+                                        (node-thunk old)))))
 
-#;(define (update-predecessors mt pred succ)
-  (let ([old (hash-ref *memo-tables succ)])
-    (hash-set! *memo-tables* succ (node (
+(define (update-predecessors)
+  (let* ([succ (car (unbox stack))]
+         [old (hash-ref *memo-tables* succ)])
+    (set-box! stack (rest (unbox stack)))
+    (let ([pred (car (unbox stack))])
+      (hash-set! *memo-tables* succ (node (node-successors old)
+                                          (cons pred (node-predecessors old))
+                                          (node-thunk old))))))
 
 ;; ===========================================================
 ;; build graph
@@ -76,19 +87,19 @@
 ;; nodes
 (define node-ids (box '()))
 
-(define node-children (box '()))
+(define node-succs (box '()))
 
 (define (make-nodes)
   (let ([ids
          (hash-map *memo-tables* (λ (a b) a))]
-        [children
-         (hash-map *memo-tables* (λ (a b) (node-edges b)))])
+        [successors
+         (hash-map *memo-tables* (λ (a b) (node-successors b)))])
     (set-box! node-ids ids)
-    (set-box! node-children children)))
+    (set-box! node-succs successors)))
 
 (define (build-graph)
   (make-nodes)
-  (build-graph-helper (unbox node-ids) (unbox node-children)))
+  (build-graph-helper (unbox node-ids) (unbox node-succs)))
 
 (define (build-graph-helper ids children)
   (cond
