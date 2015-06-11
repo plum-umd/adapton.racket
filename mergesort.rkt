@@ -48,7 +48,8 @@
     [(matt f mt)
      (hash-ref! *memo-tables* 
                 (equal-hash-code (cons f xs))
-                (node '()
+                (node xs
+                      '()
                       '()
                       (r:delay (apply f xs))))]))
 
@@ -66,27 +67,31 @@
            [else (update-successors (car s)
                                     hash)])))]))
 
+;; update-successors 
 (define (update-successors pred succ)
   (let ([old (hash-ref *memo-tables* pred)])
-    (hash-set! *memo-tables* pred (node (cons succ (node-successors old))
+    (hash-set! *memo-tables* pred (node (node-xs old)
+                                        (cons succ (node-successors old))
                                         (node-predecessors old)
                                         (node-thunk old)))))
 
+;; update-predecessors
 (define (update-predecessors)
   (let* ([succ (car (unbox stack))]
          [old (hash-ref *memo-tables* succ)])
     (set-box! stack (rest (unbox stack)))
     (let ([pred (car (unbox stack))])
-      (hash-set! *memo-tables* succ (node (node-successors old)
+      (hash-set! *memo-tables* succ (node (node-xs old)
+                                          (node-successors old)
                                           (cons pred (node-predecessors old))
                                           (node-thunk old))))))
 
 ;; ===========================================================
-;; build graph
+;; GRAPH VISUALIZATION
 
 ;; nodes
 (define node-ids (box '()))
-
+(define node-inputs (box '()))
 (define node-succs (box '()))
 
 (define (make-nodes)
@@ -123,6 +128,7 @@
                  (port-to-graphmovie (cdr l)))]))
 
 ;; ============================================================
+;; DATA STRUCTURES
 
 ;; this stack keeps track of the "currently running" thunk
 ;; by adding it to the front of the list. The rest of the 
@@ -130,21 +136,29 @@
 (define stack (box empty))
 
 ;; a node consists of an id, edges to its children, and a thunk
-(struct node (successors predecessors thunk))
+(struct node (xs successors predecessors thunk))
 
-;; ============================================================
-
-;; l-cons (lazy-cons) creates a delayed list 
+;; LISTS
+;; l-cons (lazy-cons) creates a delayed, mutable list 
 (define/memo (l-cons l r)
-  (cons l (λ () r))) 
+  (cons l (box (λ () r))))
 
 ;; l-cdr (lazy-cdr) returns the next element of a lazy list
 (define/memo (l-cdr l)
   (cond
     [(empty? l) '()]
-    [(procedure? (cdr l)) ((cdr l))]
-    [else (cdr l)]))
+    [(procedure? (unbox (cdr l))) ((unbox (cdr l)))]
+    [else (unbox (cdr l))]))
 
+;; ============================================================
+;; MERGESORT DEFINITION
+
+;; we use a globally defined variable to contain our input to
+;; mergesort. This allows us to mutate the input later
+(define input (l-cons (l-cons 3 empty)
+                      (l-cons (l-cons 2 empty)
+                              (l-cons (l-cons 1 empty)
+                                      empty))))
 
 (define/memo (merge-sort l)
   (cond
@@ -164,8 +178,8 @@
     [(empty? l) r]
     [(empty? r) l]
     [(<= (car l) (car r))
-     (cons (car l)
-           (λ () (merge (l-cdr l) r)))]
+     (l-cons (car l)
+           (merge (l-cdr l) r))]
     [else
-     (cons (car r)
-           (λ () (merge l (l-cdr r))))]))
+     (l-cons (car r)
+          (merge l (l-cdr r)))]))
