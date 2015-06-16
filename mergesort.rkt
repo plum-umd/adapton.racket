@@ -3,8 +3,6 @@
 (require (prefix-in r: (only-in racket delay force equal-hash-code))
          racket/format)
 
-
-
 (define name (box 1))
 
 ;;create a top level table to hold a memo table for each function
@@ -48,7 +46,7 @@
     [(matt f mt)
      (hash-ref! *memo-tables* 
                 (equal-hash-code (cons f xs))
-                (node xs
+                (node #f
                       '()
                       '()
                       (r:delay (apply f xs))))]))
@@ -70,7 +68,7 @@
 ;; update-successors 
 (define (update-successors pred succ)
   (let ([old (hash-ref *memo-tables* pred)])
-    (hash-set! *memo-tables* pred (node (node-xs old)
+    (hash-set! *memo-tables* pred (node (node-dirty old)
                                         (cons succ (node-successors old))
                                         (node-predecessors old)
                                         (node-thunk old)))))
@@ -81,21 +79,52 @@
          [old (hash-ref *memo-tables* succ)])
     (set-box! stack (rest (unbox stack)))
     (let ([pred (car (unbox stack))])
-      (hash-set! *memo-tables* succ (node (node-xs old)
+      (hash-set! *memo-tables* succ (node (node-dirty old)
                                           (node-successors old)
                                           (cons pred (node-predecessors old))
                                           (node-thunk old))))))
 
 ;; dirty
+;; dirty-nodes contains a list of all the dirty nodes in the dcg
+(define dirty-nodes (box '()))
+
 ;; given a cell, dirty everwhere on the DCG we can reach from that cell
 (define (dirty id)
+  (dirty-cell-children (cell-pred (hash-ref *cells* id))))
+
+(define (dirty-cell-children l)
+  (cond 
+    [(empty? l) (displayln "done")]
+    [(node-dirty (hash-ref *memo-tables* (car l))) (displayln "done")]
+    [else (let ([old-node (hash-ref *memo-tables* (car l))])
+            (begin (hash-set! *memo-tables* 
+                              (car l)
+                              (node #t
+                                    (node-successors old-node)
+                                    (node-predecessors old-node)
+                                    (node-thunk old-node)))
+                   (dirty-node-children (node-predecessors old-node))
+                   (dirty-cell-children (cdr l))))]))
+
+(define (dirty-node-children l)
+  (cond
+    [(empty? l) (displayln "done")]
+    [(node-dirty (hash-ref *memo-tables* (car l))) (displayln "done")]
+    [else (let ([old-node (hash-ref *memo-tables* (car l))])
+            (begin (hash-set! *memo-tables*
+                              (car l)
+                              (node #t
+                                    (node-successors old-node)
+                                    (node-predecessors old-node)
+                                    (node-thunk old-node)))
+                   (dirty-node-children (node-predecessors (hash-ref *memo-tables* (car l))))
+                   (dirty-node-children (cdr l))))]))
 
 ;; ===========================================================
 ;; GRAPH VISUALIZATION
 
 ;; nodes
 (define node-ids (box '()))
-(define node-inputs (box '()))
 (define node-succs (box '()))
 
 (define (make-nodes)
@@ -116,12 +145,6 @@
     [else (cons (cons (first ids) (first children))
                 (build-graph-helper (rest ids) (rest children)))]))
 
-(define (e l)
-  (cond 
-    [(empty? l) l]
-    [else (append (first l) (e (rest l)))]))
-
-
 (define (port-to-graphmovie l)
   (cond
     [(empty? l) (displayln "done")]
@@ -130,6 +153,14 @@
                                           (car (car l))
                                           a)) (cdr (car l)))
                  (port-to-graphmovie (cdr l)))]))
+
+(define (dirty-graph color)
+  (printf "[change] make-dirty ~a~n" color)
+  (map (λ (id dirty) (when dirty (printf "[node ~a ~a]~n" id color)))
+       (hash-map *memo-tables* (λ (a b) a))
+       (hash-map *memo-tables* (λ (a b) (node-dirty b))))
+  (displayln "done"))
+
 
 ;; ============================================================
 ;; DATA STRUCTURES
@@ -141,7 +172,7 @@
 (define stack (box empty))
 
 ;; a node consists of an id, edges to its children, and a thunk
-(struct node (xs successors predecessors thunk))
+(struct node (dirty successors predecessors thunk))
 
 ;; LISTS
 ;; l-cons (lazy-cons) creates a delayed list 
@@ -166,8 +197,7 @@
          ((cdr l))
          (cdr l))]))
 
-;; BOXES
-
+;; MUTABLE REFERENCE-CELLS 
 ;; a cell is a wrapper for boxes that assigns ids to boxes
 (struct cell (id box pred))
 
@@ -189,7 +219,7 @@
 ;; set-cell! replaces set-box!, updating the value of the box 
 ;; with the given id
 (define (set-cell! id v)
-  (set-box! (hash-ref *cells* id) v)
+  (set-box! (cell-box (hash-ref *cells* id)) v)
   (dirty id))
 
 ;; read-cell is called in place of unbox, and allows us to unbox 
@@ -200,13 +230,16 @@
 ;; read-cell/update is called in place of read-cell, and allows us to 
 ;; set cells as children of nodes.
 (define (read-cell/update b)
-  (let ([old (hash-ref *memo-tables* (car (unbox stack)))])
+  (let ([old-node (hash-ref *memo-tables* (car (unbox stack)))])
     (hash-set! *memo-tables* 
                (car (unbox stack))
-               (node (node-xs old)
-                     (cons (cell-id b) (node-successors old))
-                     (node-predecessors old)
-                     (node-thunk old))))
+               (node (node-dirty old-node)
+                     (cons (cell-id b) (node-successors old-node))
+                     (node-predecessors old-node)
+                     (node-thunk old-node))))
+  (hash-set! *cells* (cell-id b) (cell (cell-id b)
+                                       (cell-box b)
+                                       (cons (car (unbox stack)) (cell-pred b))))
   (unbox (cell-box b)))
 
 ;; ============================================================
