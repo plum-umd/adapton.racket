@@ -32,11 +32,16 @@
 ;; then extract the thunk from the node
 ;; and force it. 
 (define (memo m . xs)
-  (begin
-    (apply update-stack m xs)
-    (let ([out (force (node-thunk (apply delay m xs)))])
-      (when (not (empty? (cdr (unbox stack)))) (update-predecessors))
-      out)))
+  (apply delay m xs))
+
+(define (force n)
+  (update-stack n)
+  (let* ([result (r:force (node-thunk n))]
+         [old-node-id (car (unbox stack))]
+         [old-node (hash-ref *memo-tables* old-node-id)])
+    (node-update *memo-tables* old-node-id "result" result)
+    (when (not (empty? (cdr (unbox stack)))) (update-predecessors))
+    result))
 
 ;; given a funciton and arguments, 
 ;; add the arguments as a key in the hash-table for the function
@@ -46,43 +51,34 @@
     [(matt f mt)
      (hash-ref! *memo-tables* 
                 (equal-hash-code (cons f xs))
-                (node #f
+                (node (equal-hash-code (cons f xs))
+                      #f
                       '()
                       '()
-                      (r:delay (apply f xs))))]))
+                      (r:delay (apply f xs))
+                      '()))]))
 
 ;; update-stack appends the currently running node to the 
 ;; top of the stack
-(define (update-stack m . xs)
-  (match m
-    [(matt f mt)
-     (let ([s (unbox stack)]
-           [hash (equal-hash-code (cons f xs))])
-       (begin
-         (set-box! stack (cons hash s))
-         (cond 
-           [(empty? s) (displayln "s is empty")]
-           [else (update-successors (car s)
-                                    hash)])))]))
+(define (update-stack n)
+  (let ([s (unbox stack)])
+    (begin
+      (set-box! stack (cons (node-id n) s))
+      (cond 
+        [(empty? s) (displayln "s is empty")]
+        [else (update-successors (car s)
+                                 (node-id n))]))))
 
 ;; update-successors 
 (define (update-successors pred succ)
-  (let ([old (hash-ref *memo-tables* pred)])
-    (hash-set! *memo-tables* pred (node (node-dirty old)
-                                        (cons succ (node-successors old))
-                                        (node-predecessors old)
-                                        (node-thunk old)))))
+  (node-update *memo-tables* pred "successors" succ))
 
 ;; update-predecessors
 (define (update-predecessors)
-  (let* ([succ (car (unbox stack))]
-         [old (hash-ref *memo-tables* succ)])
+  (let* ([succ (car (unbox stack))])
     (set-box! stack (rest (unbox stack)))
     (let ([pred (car (unbox stack))])
-      (hash-set! *memo-tables* succ (node (node-dirty old)
-                                          (node-successors old)
-                                          (cons pred (node-predecessors old))
-                                          (node-thunk old))))))
+      (node-update *memo-tables* succ "predecessors" pred))))
 
 ;; dirty
 ;; dirty-nodes contains a list of all the dirty nodes in the dcg
@@ -90,35 +86,27 @@
 
 ;; given a cell, dirty everwhere on the DCG we can reach from that cell
 (define (dirty id)
-  (dirty-cell-children (cell-pred (hash-ref *cells* id))))
+  (dirty-cell-children (cell-predecessors (hash-ref *cells* id))))
 
 (define (dirty-cell-children l)
   (cond 
     [(empty? l) (displayln "done")]
     [(node-dirty (hash-ref *memo-tables* (car l))) (displayln "done")]
     [else (let ([old-node (hash-ref *memo-tables* (car l))])
-            (begin (hash-set! *memo-tables* 
-                              (car l)
-                              (node #t
-                                    (node-successors old-node)
-                                    (node-predecessors old-node)
-                                    (node-thunk old-node)))
-                   (dirty-node-children (node-predecessors old-node))
-                   (dirty-cell-children (cdr l))))]))
+            (begin 
+              (node-update *memo-tables* (car l) "dirty" #t)
+              (dirty-node-children (node-predecessors old-node))
+              (dirty-cell-children (cdr l))))]))
 
 (define (dirty-node-children l)
   (cond
     [(empty? l) (displayln "done")]
     [(node-dirty (hash-ref *memo-tables* (car l))) (displayln "done")]
     [else (let ([old-node (hash-ref *memo-tables* (car l))])
-            (begin (hash-set! *memo-tables*
-                              (car l)
-                              (node #t
-                                    (node-successors old-node)
-                                    (node-predecessors old-node)
-                                    (node-thunk old-node)))
-                   (dirty-node-children (node-predecessors (hash-ref *memo-tables* (car l))))
-                   (dirty-node-children (cdr l))))]))
+            (begin 
+              (node-update *memo-tables* (car l) "dirty" #t)
+              (dirty-node-children (node-predecessors (hash-ref *memo-tables* (car l))))
+              (dirty-node-children (cdr l))))]))
 
 ;; ===========================================================
 ;; GRAPH VISUALIZATION
@@ -172,20 +160,16 @@
 (define stack (box empty))
 
 ;; a node consists of an id, edges to its children, and a thunk
-(struct node (dirty successors predecessors thunk))
+(struct node (id dirty successors predecessors thunk result))
 
 ;; LISTS
-;; l-cons (lazy-cons) creates a delayed list 
-(define/memo (l-cons l r)
-  (cons l (λ () r)))
-
 ;; lm-cons (lazy. mutable-cons) creates a delayed, mutable list
-(define/memo (lm-cons l r)
+(define (lm-cons l r)
   (cons l (make-cell (λ () r))))
 
 ;; lm-cdr (lazy-cdr) returns the next element of a lazy 
 ;; (or lazy mutable) list
-(define/memo (l-cdr l)
+(define (l-cdr l)
   (cond
     [(empty? l) '()]
     [(cell? (cdr l))
@@ -199,7 +183,7 @@
 
 ;; MUTABLE REFERENCE-CELLS 
 ;; a cell is a wrapper for boxes that assigns ids to boxes
-(struct cell (id box pred))
+(struct cell (id box predecessors))
 
 ;; cell-counter contains the next box's id
 (define cell-counter (box 1))
@@ -230,17 +214,11 @@
 ;; read-cell/update is called in place of read-cell, and allows us to 
 ;; set cells as children of nodes.
 (define (read-cell/update b)
-  (let ([old-node (hash-ref *memo-tables* (car (unbox stack)))])
-    (hash-set! *memo-tables* 
-               (car (unbox stack))
-               (node (node-dirty old-node)
-                     (cons (cell-id b) (node-successors old-node))
-                     (node-predecessors old-node)
-                     (node-thunk old-node))))
+  (node-update *memo-tables* (car (unbox stack)) "successors" (cell-id b))
   (hash-set! *cells* (cell-id b) (cell (cell-id b)
                                        (cell-box b)
-                                       (cons (car (unbox stack)) (cell-pred b))))
-  (unbox (cell-box b)))
+                                       (cons (car (unbox stack)) (cell-predecessors b))))
+  (unbox (cell-box b)))    
 
 ;; ============================================================
 ;; MERGESORT DEFINITION
@@ -255,14 +233,14 @@
 (define/memo (merge-sort l)
   (cond
     [(empty? (l-cdr l)) (car l)]
-    [else (merge-sort (merge-sort-helper l))]))
+    [else (force (merge-sort (force (merge-sort-helper l))))]))
 
 (define/memo (merge-sort-helper l)
   (cond
     [(empty? (l-cdr l)) l]
-    [(l-cons (merge (car l) 
-                    (car (l-cdr l)))
-             (merge-sort-helper (l-cdr (l-cdr l))))]))
+    [(cons (force (merge (car l) 
+                         (car (l-cdr l))))
+           (λ () (force (merge-sort-helper (l-cdr (l-cdr l))))))]))
 
 (define/memo (merge l r)
   (cond 
@@ -270,8 +248,61 @@
     [(empty? l) r]
     [(empty? r) l]
     [(<= (car l) (car r))
-     (l-cons (car l)
-             (merge (l-cdr l) r))]
+     (cons (car l)
+           (λ () (force (merge (l-cdr l) r))))]
     [else
-     (l-cons (car r)
-             (merge l (l-cdr r)))]))
+     (cons (car r)
+           (λ () (force (merge l (l-cdr r)))))]))
+
+
+;; ==============================================================
+;; TO BE MOVED
+(define (node-update mt id field value)
+  (let ([old-node (hash-ref mt id)])
+    (cond
+      [(equal? field "dirty") 
+       (hash-set! mt id (node (node-id old-node)
+                              value
+                              (node-successors old-node)
+                              (node-predecessors old-node)
+                              (node-thunk old-node)
+                              (node-result old-node)))]
+      [(equal? field "successors")
+       (hash-set! mt id (node (node-id old-node)
+                              (node-dirty old-node)
+                              (cons value (node-successors old-node))
+                              (node-predecessors old-node)
+                              (node-thunk old-node)
+                              (node-result old-node)))]
+      [(equal? field "predecessors")
+       (hash-set! mt id (node (node-id old-node)
+                              (node-dirty old-node)
+                              (node-successors old-node)
+                              (cons value  (node-predecessors old-node))
+                              (node-thunk old-node)
+                              (node-result old-node)))]
+      [(equal? field "result")
+       (hash-set! mt id (node (node-id old-node)
+                              (node-dirty old-node)
+                              (node-successors old-node)
+                              (node-predecessors old-node)
+                              (node-thunk old-node)
+                              value))])))
+
+(define (node-clear-successors mt id)
+  (let ([old-node (hash-ref mt id)])
+    (hash-set! mt id (node (node-id old-node)
+                           (node-dirty old-node)
+                           '()
+                           (node-predecessors old-node)
+                           (node-thunk old-node)
+                           (node-result old-node)))))
+
+(define (node-clear-predecessors mt id)
+  (let ([old-node (hash-ref mt id)])
+    (hash-set! mt id (node (node-id old-node)
+                           (node-dirty old-node)
+                           (node-successors old-node)
+                           '()
+                           (node-thunk old-node)
+                           (node-result old-node)))))
