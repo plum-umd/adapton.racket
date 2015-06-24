@@ -35,6 +35,7 @@
   (apply delay m xs))
 
 (define (force n)
+  (displayln stack)
   (update-stack n)
   (let* ([result (r:force (node-thunk n))]
          [old-node-id (car (unbox stack))]
@@ -167,7 +168,7 @@
 (define (lm-cons l r)
   (cons l (make-cell (λ () r))))
 
-;; lm-cdr (lazy-cdr) returns the next element of a lazy 
+;; l-cdr (lazy-cdr) returns the next element of a lazy 
 ;; (or lazy mutable) list
 (define (l-cdr l)
   (cond
@@ -214,11 +215,13 @@
 ;; read-cell/update is called in place of read-cell, and allows us to 
 ;; set cells as children of nodes.
 (define (read-cell/update b)
+  (displayln (cell-id b))
   (node-update *memo-tables* (car (unbox stack)) "successors" (cell-id b))
-  (hash-set! *cells* (cell-id b) (cell (cell-id b)
-                                       (cell-box b)
-                                       (cons (car (unbox stack)) (cell-predecessors b))))
-  (unbox (cell-box b)))    
+  (let ([old-cell (hash-ref *cells* (cell-id b))])
+    (hash-set! *cells* (cell-id b) (cell (cell-id old-cell)
+                                         (cell-box old-cell)
+                                         (cons (car (unbox stack)) (cell-predecessors old-cell))))
+    (unbox (cell-box b))))
 
 ;; ============================================================
 ;; MERGESORT DEFINITION
@@ -240,14 +243,15 @@
     [(empty? (l-cdr l)) l]
     [(cons (force (merge (car l) 
                          (car (l-cdr l))))
-           (λ () (force (merge-sort-helper (l-cdr (l-cdr l))))))]))
+           (force (merge-sort-helper (l-cdr (l-cdr l)))))]))
 
 (define/memo (merge l r)
+  (printf "merge ~a ~a~n" l r)
   (cond 
     [(and (empty? l) (empty? r)) '()]
     [(empty? l) r]
-    [(empty? r) l]
-    [(<= (car l) (car r))
+    [(empty? r) l] 
+    [(<= (car l) (car r)) 
      (cons (car l)
            (λ () (force (merge (l-cdr l) r))))]
     [else
@@ -278,7 +282,7 @@
        (hash-set! mt id (node (node-id old-node)
                               (node-dirty old-node)
                               (node-successors old-node)
-                              (cons value  (node-predecessors old-node))
+                              (cons value (node-predecessors old-node))
                               (node-thunk old-node)
                               (node-result old-node)))]
       [(equal? field "result")
