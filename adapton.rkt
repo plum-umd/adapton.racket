@@ -48,31 +48,50 @@
                       (λ () (apply f xs))
                       '()))]))
 
-;; forcing a node computes its result, keeps track of successors that it
-;; forces, and handles updating of predecessors
-(define (force n)
-  ;; update the stack by adding this node to it
-  (set-box! stack (cons (node-id n) (unbox stack)))
-  ;; if there exits a node below this node on the stack, add this node to 
-  ;; that node's successors and that node to this node's predecessors
-  (when (not (empty? (cdr (unbox stack))))
-    (node-update *memo-table* (car (cdr (unbox stack))) "successors" (node-id n))
-    (node-update *memo-table* (node-id n) "predecessors" (car (cdr (unbox stack)))))
-  ;; check to see if this node is already memoized, if it is use the old result
-  (if (and (not (empty? (node-result (hash-ref *memo-table* (node-id n)))))
-           (not (node-dirty (hash-ref *memo-table* (node-id n)))))
-      (let ([result (node-result (hash-ref *memo-table* (node-id n)))])
-        (set-box! stack (cdr (unbox stack)))
-        result)
-      ;;otherwise
-      ;; compute the result of the thunk in the node
-      (let ([result ((node-thunk n))])
-        ;; store the result in the table
-        (node-update *memo-table* (node-id n) "result" result)
-        ;; remove this node from the top of the stack
-        (set-box! stack (cdr (unbox stack)))
-        ;; return the result
-        result)))
+;; forcing an articulation point computes its result.
+;; for nodes, the result is computer and stored in the node
+;; structure. For cells, the result is unboxed. Force also
+;; keeps track of successors and predecessors
+(define (force a)
+  (cond 
+    [(node? a)
+     ;; update the stack by adding this node to it
+     (set-box! stack (cons (node-id a) (unbox stack)))
+     ;; if there exits a node below this node on the stack, add this node to 
+     ;; that node's successors and that node to this node's predecessors
+     (when (not (empty? (cdr (unbox stack))))
+       (node-update *memo-table* (car (cdr (unbox stack))) "successors" (node-id a))
+       (node-update *memo-table* (node-id a) "predecessors" (car (cdr (unbox stack)))))
+     ;; check to see if this node is already memoized, if it is use the old result
+     (if (and (not (empty? (node-result (hash-ref *memo-table* (node-id a)))))
+              (not (node-dirty (hash-ref *memo-table* (node-id a)))))
+         (let ([result (node-result (hash-ref *memo-table* (node-id a)))])
+           (set-box! stack (cdr (unbox stack)))
+           result)
+         ;;otherwise
+         ;; compute the result of the thunk in the node
+         (let ([result ((node-thunk a))])
+           ;; store the result in the table
+           (node-update *memo-table* (node-id a) "result" result)
+           ;; remove this node from the top of the stack
+           (set-box! stack (cdr (unbox stack)))
+           ;; return the result
+           result))]
+    [(cell? a) 
+     ;; update the stack by adding this cell to it
+     (set-box! stack (cons (cell-id a) (unbox stack)))
+     ;; if there exits a node below this cell on the stack, add this cell to 
+     ;; that node's successors and that node to this cell's predecessors
+     (when (and (not (empty? (unbox stack)))
+                (not (empty? (cdr (unbox stack)))))
+       (node-update *memo-table* (car (cdr (unbox stack))) "successors" (cell-id a))
+       (hash-set! *cells* (cell-id a) (cell (cell-id a)
+                                            (cell-box a)
+                                            (cons (car (cdr (unbox stack))) (cell-predecessors a)))))
+     ;; extract the value of this cell
+     (let ([result (unbox (cell-box a))])
+       (set-box! stack (cdr (unbox stack)))
+       result)]))
 
 ;; ======================== DATA STRUCTURES =====================
 ;; node structure
@@ -122,24 +141,6 @@
     [(empty? l) (displayln "done")]
     [else (node-update *memo-table* (car l) "dirty" #t)
           (dirty-nodes (node-predecessors (hash-ref *memo-table* (car l))))]))
-
-
-;; lazy mutable lists
-
-
-(define (l-cons a b)
-  (cons a (λ () (make-cell b))))
-
-(define (l-cdr l)
-  (cond
-    [(node? (cdr l)) (force (cdr l))]
-    [(procedure? (cdr l))
-     (if (cell? ((cdr l)))
-         (if (empty? (read-cell ((cdr l))))
-             (read-cell ((cdr l)))
-             (read-cell/update ((cdr l))))
-         ((cdr l)))]
-    [else (cdr l)]))
 
 ;; our input should look like this
 ;; (make-cell (cons v (λ () (make-cell (cons v (λ () (make-cell ....
@@ -197,40 +198,49 @@
        (hash-map *memo-table* (λ (a b) (node-dirty b))))
   (displayln "done"))
 
-;; ========================= MERGESORT ==========================
+;; ========================= MERGESORT ========================== 
 
-(define input (make-cell (l-cons (l-cons 3 empty)
-                                 (l-cons (l-cons 2 empty)
-                                         (l-cons (l-cons 1 empty)
-                                                 empty)))))
+(define input (make-cell (cons (cons 3 (make-cell empty))
+                               (make-cell (cons (cons 2 (make-cell empty))
+                                                (make-cell (cons (cons 1 (make-cell empty))
+                                                                 (make-cell empty))))))))
+
+;(cell (cons v3
+;            (cell (cons v2
+;                        (cell (cons v1
+;                                    (cell empty))))))))
 
 (define/memo (merge-sort l)
   (printf "merge-sort ~a~n" l)
-  (cond 
-    [(empty? (l-cdr l)) (car l)]
-    [else (force (merge-sort (force (merge-sort-helper l))))]))
+  (let ([fl (force l)])
+    (printf "merge-sort ~a~n" fl)
+    (cond
+      [(empty? (force (cdr fl))) (force (car fl))]
+      [else (merge-sort (merge-sort-helper l))])))
 
 (define/memo (merge-sort-helper l)
   (printf "merge-sort-helper ~a~n" l)
-  (cond 
-    [(empty? l) l]
-    [(empty? (l-cdr l)) l]
-    [else (cons (force (merge (car l)
-                              (car (l-cdr l))))
-                (merge-sort-helper (l-cdr (l-cdr l))))]))
+  (let ([fl (force l)])
+    (printf "merge-sort-helper ~a~n" fl)
+    (cond 
+      [(empty? fl) fl]
+      [(empty? (force (cdr fl))) fl]
+      [else (cons (force (merge (car fl)
+                                (car (force (cdr fl)))))
+                  (merge-sort-helper (cdr (force (cdr fl)))))])))
 
 (define/memo (merge l r)
   (printf "merge ~a ~a~n" l r)
-  (cond 
-    [(and (empty? l) (empty? r)) empty]
-    [(empty? l) r]
-    [(empty? r) l]
-    [(<= (car l) (car r))
-     (cons (car l)
-           (merge (l-cdr l) r))]
-    [else 
-     (cons (car r)
-           (merge l (l-cdr r)))]))
+    (cond 
+      [(and (cell? l) (cell? r)) empty]
+      [(cell? l) r]
+      [(cell? r) l]
+      [(<= (car l) (car r))
+       (cons (car l)
+             (merge (cdr l) r))]
+      [else 
+       (cons (car r)
+             (merge l (cdr r)))]))
 
 ;; ==============================================================
 ;; TO BE MOVED
