@@ -91,7 +91,8 @@
      ;; extract the value of this cell
      (let ([result (unbox (cell-box a))])
        (set-box! stack (cdr (unbox stack)))
-       result)]))
+       result)]
+    [else a]))
 
 ;; ======================== DATA STRUCTURES =====================
 ;; node structure
@@ -200,47 +201,57 @@
 
 ;; ========================= MERGESORT ========================== 
 
-(define input (make-cell (cons (cons 3 (make-cell empty))
-                               (make-cell (cons (cons 2 (make-cell empty))
-                                                (make-cell (cons (cons 1 (make-cell empty))
-                                                                 (make-cell empty))))))))
+#;(define input (make-cell (cons (cons 3 empty)
+                                 (make-cell (cons (cons 2 empty)
+                                                  (make-cell (cons (cons 1 empty)
+                                                                   empty)))))))
 
-;(cell (cons v3
-;            (cell (cons v2
-;                        (cell (cons v1
-;                                    (cell empty))))))))
-
+(define input (make-cell 
+               (cons (cons (make-cell 3) empty)
+                     (make-cell 
+                      (cons (cons (make-cell 6) empty)
+                            (make-cell 
+                             (cons (cons (make-cell 9) empty)
+                                   (make-cell 
+                                    (cons (cons (make-cell 2) empty)
+                                          (make-cell 
+                                           (cons (cons (make-cell 4) empty)
+                                                 (make-cell 
+                                                  (cons (cons (make-cell 5) empty)
+                                                        (make-cell 
+                                                         (cons (cons (make-cell 8) empty)
+                                                               (make-cell 
+                                                                (cons (cons (make-cell 1) empty)
+                                                                      empty)))))))))))))))))
 (define/memo (merge-sort l)
   (printf "merge-sort ~a~n" l)
   (let ([fl (force l)])
     (printf "merge-sort ~a~n" fl)
     (cond
-      [(empty? (force (cdr fl))) (force (car fl))]
-      [else (merge-sort (merge-sort-helper l))])))
+      [(empty? (force (cdr fl))) (car fl)]
+      [else (force (merge-sort (force (merge-sort-helper fl))))])))
 
 (define/memo (merge-sort-helper l)
   (printf "merge-sort-helper ~a~n" l)
-  (let ([fl (force l)])
-    (printf "merge-sort-helper ~a~n" fl)
-    (cond 
-      [(empty? fl) fl]
-      [(empty? (force (cdr fl))) fl]
-      [else (cons (force (merge (car fl)
-                                (car (force (cdr fl)))))
-                  (merge-sort-helper (cdr (force (cdr fl)))))])))
+  (cond 
+    [(empty? l) empty]
+    [(empty? (cdr l)) l]
+    [else (cons (force (merge (car l)
+                              (car (force (cdr l)))))
+                (force (merge-sort-helper (force (cdr (force (cdr l)))))))]))
 
 (define/memo (merge l r)
   (printf "merge ~a ~a~n" l r)
     (cond 
-      [(and (cell? l) (cell? r)) empty]
-      [(cell? l) r]
-      [(cell? r) l]
-      [(<= (car l) (car r))
-       (cons (car l)
-             (merge (cdr l) r))]
+      [(and (empty? l) (empty? r)) empty]
+      [(empty? l) r]
+      [(empty? r) l]
+      [(<= (force (car l)) (force (car r)))
+       (cons (force (car l))
+             (merge (force (cdr l)) r))]
       [else 
-       (cons (car r)
-             (merge l (cdr r)))]))
+       (cons (force (car r))
+             (merge l (force (cdr r))))]))
 
 ;; ==============================================================
 ;; TO BE MOVED
