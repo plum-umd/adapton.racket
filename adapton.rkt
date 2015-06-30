@@ -84,10 +84,13 @@
      ;; that node's successors and that node to this cell's predecessors
      (when (and (not (empty? (unbox stack)))
                 (not (empty? (cdr (unbox stack)))))
+       (printf "adding ~a to ~a's list of successors~n" (cell-id a) (car (cdr (unbox stack))))
        (node-update *memo-table* (car (cdr (unbox stack))) "successors" (cell-id a))
+       (printf "adding ~a to ~a's list of predecessors~n" (car (cdr (unbox stack))) (cell-id a))
        (hash-set! *cells* (cell-id a) (cell (cell-id a)
                                             (cell-box a)
-                                            (cons (car (cdr (unbox stack))) (cell-predecessors a)))))
+                                            (cons (car (cdr (unbox stack))) 
+                                                  (cell-predecessors (hash-ref *cells* (cell-id a)))))))
      ;; extract the value of this cell
      (let ([result (unbox (cell-box a))])
        (set-box! stack (cdr (unbox stack)))
@@ -141,7 +144,8 @@
   (cond
     [(empty? l) (displayln "done")]
     [else (node-update *memo-table* (car l) "dirty" #t)
-          (dirty-nodes (node-predecessors (hash-ref *memo-table* (car l))))]))
+          (dirty-nodes (node-predecessors (hash-ref *memo-table* (car l))))
+          (dirty-nodes (cdr l))]))
 
 ;; our input should look like this
 ;; (make-cell (cons v (λ () (make-cell (cons v (λ () (make-cell ....
@@ -247,10 +251,10 @@
       [(empty? l) r]
       [(empty? r) l]
       [(<= (force (car l)) (force (car r)))
-       (cons (force (car l))
+       (cons (car l)
              (merge (force (cdr l)) r))]
       [else 
-       (cons (force (car r))
+       (cons (car r)
              (merge l (force (cdr r))))]))
 
 ;; ==============================================================
