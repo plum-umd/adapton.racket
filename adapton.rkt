@@ -2,6 +2,24 @@
 (require (prefix-in r: (only-in racket delay force equal-hash-code))
          racket/format)
 
+;; ============= FILESYSTEM ===============
+
+(displayln (current-directory))
+
+(define file (string-append (~a (current-directory)) "graph.gmv"))
+(display-to-file (format "[styleselect colors]~n")
+                 file
+                 #:mode 'text
+                 #:exists 'replace)
+
+(define (write-to-graph string)
+  (display-to-file string	 
+                   file
+                   #:mode 'text
+                   #:exists 'append))
+
+(write-to-graph (format "[state]make red~n"))
+
 ;; =========== GLOBAL VARIABLES ===========
 
 ;;create a top level table for nodes
@@ -39,14 +57,16 @@
 (define (memo m . xs)
   (match m
     [(matt f)
-     (hash-ref! *memo-table* 
-                (equal-hash-code (cons f xs))
-                (node (equal-hash-code (cons f xs))
-                      #f
-                      '()
-                      '()
-                      (λ () (apply f xs))
-                      '()))]))
+     (let ([id (equal-hash-code (cons f xs))])
+       (write-to-graph (format "[change]add node~n[node ~a red]~n" id))
+       (hash-ref! *memo-table* 
+                  (equal-hash-code (cons f xs))
+                  (node (equal-hash-code (cons f xs))
+                        #f
+                        '()
+                        '()
+                        (λ () (apply f xs))
+                        '())))]))
 
 ;; forcing an articulation point computes its result.
 ;; for nodes, the result is computer and stored in the node
@@ -57,26 +77,43 @@
     [(node? a)
      ;; update the stack by adding this node to it
      (set-box! stack (cons (node-id a) (unbox stack)))
-     ;; if there exits a node below this node on the stack, add this node to 
-     ;; that node's successors and that node to this node's predecessors
-     (when (not (empty? (cdr (unbox stack))))
-       (node-update *memo-table* (car (cdr (unbox stack))) "successors" (node-id a))
-       (node-update *memo-table* (node-id a) "predecessors" (car (cdr (unbox stack)))))
-     ;; check to see if this node is already memoized, if it is use the old result
-     (if (and (not (empty? (node-result (hash-ref *memo-table* (node-id a)))))
-              (not (node-dirty (hash-ref *memo-table* (node-id a)))))
-         (let ([result (node-result (hash-ref *memo-table* (node-id a)))])
-           (set-box! stack (cdr (unbox stack)))
-           result)
-         ;;otherwise
-         ;; compute the result of the thunk in the node
-         (let ([result ((node-thunk a))])
-           ;; store the result in the table
-           (node-update *memo-table* (node-id a) "result" result)
-           ;; remove this node from the top of the stack
-           (set-box! stack (cdr (unbox stack)))
-           ;; return the result
-           result))]
+     ;; is this node dirty?
+     (if (node-dirty (hash-ref *memo-table* (node-id a)))
+         ;; if yes, clean it and return the cleaned result
+         (begin (set-box! stack (cdr (unbox stack)))
+         (let ([result (clean a)])
+           result))
+         ;; otherwise
+         ;; check to see if this node is already memoized, if it is use the old result
+         (if (not (empty? (node-result (hash-ref *memo-table* (node-id a)))))
+             (let ([result (node-result (hash-ref *memo-table* (node-id a)))])
+               ;; if there exits a node below this node on the stack, add this node to 
+               ;; that node's successors and that node to this node's predecessors 
+               (when (not (empty? (cdr (unbox stack))))
+                 (node-update *memo-table* (car (cdr (unbox stack))) "successors" (edge 'n
+                                                                                        (node-id a)
+                                                                                        result))
+                 (write-to-graph (format "[change]add edge~n[edge ~a ~a]~n" (car (cdr (unbox stack))) (node-id a)))
+                 (node-update *memo-table* (node-id a) "predecessors" (car (cdr (unbox stack)))))
+               (set-box! stack (cdr (unbox stack)))
+               result)
+             ;; otherwise
+             ;; compute the result of the thunk in the node
+             (let ([result ((node-thunk a))])
+               ;; store the result in the table
+               (node-update *memo-table* (node-id a) "result" result)
+               ;; if there exits a node below this node on the stack, add this node to 
+               ;; that node's successors and that node to this node's predecessors
+               (when (not (empty? (cdr (unbox stack))))
+                 (node-update *memo-table* (car (cdr (unbox stack))) "successors" (edge 'n
+                                                                                        (node-id a)
+                                                                                        result))
+                 (write-to-graph (format "[change]add edge~n[edge ~a ~a]~n" (car (cdr (unbox stack))) (node-id a)))
+                 (node-update *memo-table* (node-id a) "predecessors" (car (cdr (unbox stack)))))
+               ;; remove this node from the top of the stack
+               (set-box! stack (cdr (unbox stack)))
+               ;; return the result
+               result)))]
     [(cell? a) 
      ;; update the stack by adding this cell to it
      (set-box! stack (cons (cell-id a) (unbox stack)))
@@ -84,34 +121,107 @@
      ;; that node's successors and that node to this cell's predecessors
      (when (and (not (empty? (unbox stack)))
                 (not (empty? (cdr (unbox stack)))))
-       (printf "adding ~a to ~a's list of successors~n" (cell-id a) (car (cdr (unbox stack))))
-       (node-update *memo-table* (car (cdr (unbox stack))) "successors" (cell-id a))
-       (printf "adding ~a to ~a's list of predecessors~n" (car (cdr (unbox stack))) (cell-id a))
+       (node-update *memo-table* (car (cdr (unbox stack))) "successors" (edge 'c
+                                                                              (cell-id a) 
+                                                                              '()))
+       (write-to-graph (format "[change]add edge~n[edge ~a ~a]~n" (car (cdr (unbox stack))) (cell-id a)))
        (hash-set! *cells* (cell-id a) (cell (cell-id a)
                                             (cell-box a)
                                             (cons (car (cdr (unbox stack))) 
-                                                  (cell-predecessors (hash-ref *cells* (cell-id a)))))))
+                                                  (cell-predecessors (hash-ref *cells* (cell-id a))))
+                                            (cell-dirty a))))
      ;; extract the value of this cell
      (let ([result (unbox (cell-box a))])
        (set-box! stack (cdr (unbox stack)))
        result)]
     [else a]))
 
+;; dirty takes the predecessors of a cell and dirties all nodes
+;; reachable from that cell
+(define (dirty id)
+  (write-to-graph (format "[change]make dirty~n[node ~a green]~n" id))
+  (let ([old-cell (hash-ref *cells* id)])
+  (hash-set! *cells* id (cell id
+                              (cell-box old-cell)
+                              (cell-predecessors old-cell)
+                              #t))
+            
+  (dirty-nodes (cell-predecessors old-cell))))
+
+(define (dirty-nodes l)
+  (displayln l)
+  (cond
+    [(empty? l) (displayln "done")]
+    [(node-dirty (hash-ref *memo-table* (car l))) (displayln "done")]
+    [else (node-update *memo-table* (car l) "dirty" #t)
+          (write-to-graph (format "[change]make dirty~n[node ~a green]~n" (car l)))
+          (dirty-nodes (node-predecessors (hash-ref *memo-table* (car l))))
+          (dirty-nodes (cdr l))]))
+
+;; clean takes a node and does the minimum amount of work necessary to decide
+;; whether or not a dirty node needs to be recomputed. If it does, clean will 
+;; recompute that node and drop its successors
+(define (clean n)
+  (printf "cleaning ~a~n" (node-id n))
+  (let ([new-n (node (node-id n)
+                      #f
+                      '()
+                      (node-predecessors n)
+                      (node-thunk n)
+                      '())])
+    (if (begin (write-to-graph (format "[change]checking successors~n[node ~a blue]~n" (node-id n)))
+               (check-successors (node-successors n)))
+        (begin 
+          (write-to-graph (format "[change]cleaning node~n[node ~a yellow]~n" (node-id n)))
+          (hash-set! *memo-table* (node-id n) new-n)
+          (let ([result (force new-n)])
+            (node-update *memo-table* (node-id n) "result" result)
+            result))
+        (node-result n))))
+
+;; check-successors takes a node's list of successors and checks to see if they
+;; are dirty. it will clean the first dirty successor that it finds, and compare
+;; the new result to the old result. If the results are different than the original 
+;; node needs to be recomputed, and we return simply #t, indicating to the clean 
+;; function that the original node in question needs to be recomputed. 
+(define (check-successors l)
+  (cond
+    [(empty? l) #f]
+    [(and (equal? (edge-type (car l)) 'c)
+          (cell-dirty (hash-ref *cells* (edge-id (car l)))))
+     #t]
+    [(and (equal? (edge-type (car l)) 'n)
+          (node-dirty (hash-ref *memo-table* (edge-id (car l)))))
+     (begin (clean (hash-ref *memo-table* (edge-id (car l))))
+            (if (equal? (edge-result (car l))
+                        (node-result (hash-ref *memo-table* (edge-id (car l)))))
+                (check-successors (cdr l))
+                #t))]
+    [(equal? (edge-type (car l)) 'n)
+     (if (equal? (edge-result (car l))
+                 (node-result (hash-ref *memo-table* (edge-id (car l)))))
+         (check-successors (cdr l))
+         #t)]))
+
 ;; ======================== DATA STRUCTURES =====================
 ;; node structure
 (struct node (id dirty successors predecessors thunk result))
 
 ;; edge structure
-(struct edge (id result))
+;; type is one of 'n (node) or 'c (cell),
+;; id is the target of the edge
+;; result is the this edge's knowledge of the old result
+;; of its target.
+(struct edge (type id result))
 
 ;; cell structure
-(struct cell (id box predecessors))
+(struct cell (id box predecessors dirty))
 
 ;; make-cell replaces boxes, allows us to assign ids to cells
 ;; and keep track of them in a table
 (define (make-cell v)
   (set-box! cell-counter (+ 1 (unbox cell-counter)))
-  (let ([c (cell (unbox cell-counter) (box v) '())])
+  (let ([c (cell (unbox cell-counter) (box v) '() #f)])
     (printf "making cell ~a~n" (unbox cell-counter))
     (hash-ref! *cells* (unbox cell-counter) c)
     c))
@@ -128,24 +238,11 @@
   (node-update *memo-table* (car (unbox stack)) "successors" (cell-id c))
   (unbox (cell-box c)))
 
-;; set-cell! replaces set-box!, allowing us to keep track of when
+;; set-cell! replaces set-box!, allowing us to keep track of when 
 ;; the user sets the value of cell
 (define (set-cell! id v)
   (set-box! (cell-box (hash-ref *cells* id)) v)
   (dirty id))
-
-;; dirty takes the predecessors of a cell and dirties all nodes
-;; reachable from that cell
-(define (dirty id)
-  (dirty-nodes (cell-predecessors (hash-ref *cells* id))))
-
-(define (dirty-nodes l)
-  (displayln l)
-  (cond
-    [(empty? l) (displayln "done")]
-    [else (node-update *memo-table* (car l) "dirty" #t)
-          (dirty-nodes (node-predecessors (hash-ref *memo-table* (car l))))
-          (dirty-nodes (cdr l))]))
 
 ;; our input should look like this
 ;; (make-cell (cons v (λ () (make-cell (cons v (λ () (make-cell ....
@@ -162,46 +259,6 @@
   (+ 1 (force (add1 c))))
 
 ;(define input (make-cell 3))
-
-;; ===========================================================
-;; GRAPH VISUALIZATION
-;; nodes
-(define node-ids (box '()))
-(define node-succs (box '()))
-
-(define (make-nodes)
-  (let ([ids
-         (hash-map *memo-table* (λ (a b) a))]
-        [successors
-         (hash-map *memo-table* (λ (a b) (node-successors b)))])
-    (set-box! node-ids ids)
-    (set-box! node-succs successors)))
-
-(define (build-graph)
-  (make-nodes)
-  (build-graph-helper (unbox node-ids) (unbox node-succs)))
-
-(define (build-graph-helper ids children)
-  (cond
-    [(empty? ids) empty]
-    [else (cons (cons (first ids) (first children))
-                (build-graph-helper (rest ids) (rest children)))]))
-
-(define (port-to-graphmovie l)
-  (cond
-    [(empty? l) (displayln "done")]
-    [else (begin (printf "[node ~a red]~n" (car (car l)))
-                 (for-each (λ (a) (printf "[edge ~a ~a]~n" 
-                                          (car (car l))
-                                          a)) (cdr (car l)))
-                 (port-to-graphmovie (cdr l)))]))
-
-(define (dirty-graph color)
-  (printf "[change] make-dirty ~a~n" color)
-  (map (λ (id dirty) (when dirty (printf "[node ~a ~a]~n" id color)))
-       (hash-map *memo-table* (λ (a b) a))
-       (hash-map *memo-table* (λ (a b) (node-dirty b))))
-  (displayln "done"))
 
 ;; ========================= MERGESORT ========================== 
 
@@ -246,16 +303,16 @@
 
 (define/memo (merge l r)
   (printf "merge ~a ~a~n" l r)
-    (cond 
-      [(and (empty? l) (empty? r)) empty]
-      [(empty? l) r]
-      [(empty? r) l]
-      [(<= (force (car l)) (force (car r)))
-       (cons (car l)
-             (merge (force (cdr l)) r))]
-      [else 
-       (cons (car r)
-             (merge l (force (cdr r))))]))
+  (cond 
+    [(and (empty? l) (empty? r)) empty]
+    [(empty? l) r]
+    [(empty? r) l]
+    [(<= (force (car l)) (force (car r)))
+     (cons (car l)
+           (merge (force (cdr l)) r))]
+    [else 
+     (cons (car r)
+           (merge l (force (cdr r))))]))
 
 ;; ==============================================================
 ;; TO BE MOVED
