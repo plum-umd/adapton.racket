@@ -2,7 +2,7 @@
 (require (prefix-in r: (only-in racket delay force equal-hash-code))
          racket/format)
 
-;; ============= FILESYSTEM ===============
+;; ============= GRAPH ===============
 
 (displayln (current-directory))
 
@@ -19,6 +19,28 @@
                    #:exists 'append))
 
 (write-to-graph (format "[state]make red~n"))
+
+;; drop successors takes a node and updates that node's edges on the graph
+;; drop successors is called when a node is cleaned and must be re-evaluated,
+;; at which point its list of successors is dropped. This function simply
+;; updates our graph to reflect the new edges.
+(define (drop-successors id l)
+  (cond
+    [(empty? l) "all edges removes"]
+    [else (write-to-graph (format "[change]remove edge~n[edge ~a ~a nonactive]~n" 
+                                  id 
+                                  (edge-id (car l))))
+          (drop-successors id (cdr l))]))
+
+;; remove nodes takes a node and removes it from the graph. Then,
+;; it removes that node's successors recursively if those successors
+;; had only one predecessor
+(define (remove-nodes n)
+  (when (and (node? n)
+             (<= (length (node-predecessors n)) 1))
+    (write-to-graph (format "[change]remove node~n[node ~a nonactive]~n" (node-id n)))
+    (
+    
 
 ;; =========== GLOBAL VARIABLES ===========
 
@@ -81,8 +103,8 @@
      (if (node-dirty (hash-ref *memo-table* (node-id a)))
          ;; if yes, clean it and return the cleaned result
          (begin (set-box! stack (cdr (unbox stack)))
-         (let ([result (clean a)])
-           result))
+                (let ([result (clean a)])
+                  result))
          ;; otherwise
          ;; check to see if this node is already memoized, if it is use the old result
          (if (not (empty? (node-result (hash-ref *memo-table* (node-id a)))))
@@ -125,11 +147,12 @@
                                                                               (cell-id a) 
                                                                               '()))
        (write-to-graph (format "[change]add edge~n[edge ~a ~a]~n" (car (cdr (unbox stack))) (cell-id a)))
-       (hash-set! *cells* (cell-id a) (cell (cell-id a)
-                                            (cell-box a)
-                                            (cons (car (cdr (unbox stack))) 
-                                                  (cell-predecessors (hash-ref *cells* (cell-id a))))
-                                            (cell-dirty a))))
+       (let ([old-cell (hash-ref *cells* (cell-id a))])
+         (hash-set! *cells* (cell-id a) (cell (cell-id a)
+                                              (cell-box old-cell)
+                                              (cons (car (cdr (unbox stack))) 
+                                                    (cell-predecessors old-cell))
+                                              (cell-dirty old-cell)))))
      ;; extract the value of this cell
      (let ([result (unbox (cell-box a))])
        (set-box! stack (cdr (unbox stack)))
@@ -141,12 +164,12 @@
 (define (dirty id)
   (write-to-graph (format "[change]make dirty~n[node ~a green]~n" id))
   (let ([old-cell (hash-ref *cells* id)])
-  (hash-set! *cells* id (cell id
-                              (cell-box old-cell)
-                              (cell-predecessors old-cell)
-                              #t))
-            
-  (dirty-nodes (cell-predecessors old-cell))))
+    (hash-set! *cells* id (cell id
+                                (cell-box old-cell)
+                                (cell-predecessors old-cell)
+                                #t))
+    
+    (dirty-nodes (cell-predecessors old-cell))))
 
 (define (dirty-nodes l)
   (displayln l)
@@ -164,48 +187,55 @@
 (define (clean n)
   (printf "cleaning ~a~n" (node-id n))
   (let ([new-n (node (node-id n)
-                      #f
-                      '()
-                      (node-predecessors n)
-                      (node-thunk n)
-                      '())])
+                     #f
+                     '()
+                     (node-predecessors n)
+                     (node-thunk n)
+                     '())])
     (if (begin (write-to-graph (format "[change]checking successors~n[node ~a blue]~n" (node-id n)))
-               (check-successors (node-successors n)))
+               (not (andmap check-successor (node-successors n))))
         (begin 
           (write-to-graph (format "[change]cleaning node~n[node ~a yellow]~n" (node-id n)))
+          (update-predecessors (node-id n) (node-successors n))
+          (drop-successors (node-id n) (node-successors n))
           (hash-set! *memo-table* (node-id n) new-n)
           (let ([result (force new-n)])
             (node-update *memo-table* (node-id n) "result" result)
+            (write-to-graph (format "[change]node clean~n[node ~a red]~n" (node-id n)))
             result))
         (node-result n))))
 
 ;; check-successors takes a node's list of successors and checks to see if they
 ;; are dirty. it will clean the first dirty successor that it finds, and compare
 ;; the new result to the old result. If the results are different than the original 
-;; node needs to be recomputed, and we return simply #t, indicating to the clean 
+;; node needs to be recomputed, and we return simply #f, indicating to the clean 
 ;; function that the original node in question needs to be recomputed. 
-(define (check-successors l)
+(define (check-successor e)
   (cond
-    [(empty? l) #f]
-    [(and (equal? (edge-type (car l)) 'c)
-          (cell-dirty (hash-ref *cells* (edge-id (car l)))))
-     #t]
-    [(and (equal? (edge-type (car l)) 'n)
-          (node-dirty (hash-ref *memo-table* (edge-id (car l)))))
-     (begin (clean (hash-ref *memo-table* (edge-id (car l))))
-            (if (equal? (edge-result (car l))
-                        (node-result (hash-ref *memo-table* (edge-id (car l)))))
-                (check-successors (cdr l))
-                #t))]
-    [(equal? (edge-type (car l)) 'n)
-     (if (equal? (edge-result (car l))
-                 (node-result (hash-ref *memo-table* (edge-id (car l)))))
-         (check-successors (cdr l))
-         #t)]))
+    [(and (equal? (edge-type e) 'c)
+          (cell-dirty (hash-ref *cells* (edge-id e))))
+     #f]
+    [(and (equal? (edge-type e) 'n)
+          (node-dirty (hash-ref *memo-table* (edge-id e))))
+     (begin (clean (hash-ref *memo-table* (edge-id e)))
+            (if (equal? (edge-result e)
+                        (node-result (hash-ref *memo-table* (edge-id e))))
+                #t
+                #f))]
+    [(equal? (edge-type e) 'n)
+     (if (equal? (edge-result e)
+                 (node-result (hash-ref *memo-table* (edge-id e))))
+         #t
+         #f)]))
 
 ;; ======================== DATA STRUCTURES =====================
 ;; node structure
 (struct node (id dirty successors predecessors thunk result))
+
+;; USER NODE
+;; serves as root node for all user forced nodes
+(hash-set! *memo-table* 00000 (node 00000 #f '() '() (λ () (displayln "forcing root node")) 00000))
+(write-to-graph (format "[change]add node~n[node ~a red]~n" 00000))
 
 ;; edge structure
 ;; type is one of 'n (node) or 'c (cell),
@@ -365,3 +395,15 @@
                            '()
                            (node-thunk old-node)
                            (node-result old-node)))))
+
+(define (update-predecessors id l)
+  (when (and (not (empty? l))
+             (equal? (edge-type (car l)) 'n))
+    (let ([old-n (hash-ref *memo-table* (edge-id (car l)))])
+      (hash-set! *memo-table* (node-id old-n) (node (node-id old-n)
+                                                    (node-dirty old-n)
+                                                    (node-successors old-n)
+                                                    (remove* (list id) (node-predecessors old-n))
+                                                    (node-thunk old-n)
+                                                    (node-result old-n))))
+    (update-predecessors id (cdr l))))
