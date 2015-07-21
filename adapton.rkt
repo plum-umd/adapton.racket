@@ -1,24 +1,31 @@
 #lang racket
 (require (prefix-in r: (only-in racket delay force equal-hash-code))
-         racket/format)
+         racket/format
+         rackunit
+         rackunit/text-ui)
+
 
 ;; ============= GRAPH ===============
 
 (displayln (current-directory))
 
+(define graphing-on #f)
+
 (define file (string-append (~a (current-directory)) "graph.gmv"))
-(display-to-file (format "[styleselect colors]~n")
+(when graphing-on
+  (display-to-file (format "[styleselect colors]~n")
                  file
                  #:mode 'text
-                 #:exists 'replace)
+                 #:exists 'replace))
 
 (define (write-to-graph string)
+  (when graphing-on
   (display-to-file string	 
                    file
                    #:mode 'text
-                   #:exists 'append))
+                   #:exists 'append)))
 
-(write-to-graph (format "[state]make red~n"))
+(when graphing-on (write-to-graph (format "[state]make red~n")))
 
 ;; drop successors takes a node and updates that node's edges on the graph
 ;; drop successors is called when a node is cleaned and must be re-evaluated,
@@ -35,12 +42,17 @@
 ;; remove nodes takes a node and removes it from the graph. Then,
 ;; it removes that node's successors recursively if those successors
 ;; had only one predecessor
-(define (remove-nodes n)
-  (when (and (node? n)
-             (<= (length (node-predecessors n)) 1))
-    (write-to-graph (format "[change]remove node~n[node ~a nonactive]~n" (node-id n)))
-    (
-    
+(define (remove-nodes l)
+  (cond
+    [(empty? l) "do nothing"]
+    [(equal? (edge-type (car l)) 'n)
+     (let ([n (hash-ref *memo-table* (edge-id (car l)))])
+       (when (<= (length (node-predecessors n)) 1)
+         (write-to-graph (format "[change]remove node~n[node ~a nonactive]~n" (node-id n)))
+         (remove-nodes (node-successors n))
+         (remove-nodes (cdr l))))]
+    [else (remove-nodes (cdr l))]))
+
 
 ;; =========== GLOBAL VARIABLES ===========
 
@@ -172,10 +184,9 @@
     (dirty-nodes (cell-predecessors old-cell))))
 
 (define (dirty-nodes l)
-  (displayln l)
   (cond
-    [(empty? l) (displayln "done")]
-    [(node-dirty (hash-ref *memo-table* (car l))) (displayln "done")]
+    [(empty? l) "done"]
+    [(node-dirty (hash-ref *memo-table* (car l))) "done"]
     [else (node-update *memo-table* (car l) "dirty" #t)
           (write-to-graph (format "[change]make dirty~n[node ~a green]~n" (car l)))
           (dirty-nodes (node-predecessors (hash-ref *memo-table* (car l))))
@@ -185,7 +196,6 @@
 ;; whether or not a dirty node needs to be recomputed. If it does, clean will 
 ;; recompute that node and drop its successors
 (define (clean n)
-  (printf "cleaning ~a~n" (node-id n))
   (let ([new-n (node (node-id n)
                      #f
                      '()
@@ -252,7 +262,6 @@
 (define (make-cell v)
   (set-box! cell-counter (+ 1 (unbox cell-counter)))
   (let ([c (cell (unbox cell-counter) (box v) '() #f)])
-    (printf "making cell ~a~n" (unbox cell-counter))
     (hash-ref! *cells* (unbox cell-counter) c)
     c))
 
@@ -274,12 +283,6 @@
   (set-box! (cell-box (hash-ref *cells* id)) v)
   (dirty id))
 
-;; our input should look like this
-;; (make-cell (cons v (λ () (make-cell (cons v (λ () (make-cell ....
-;(define example-list (make-cell (cons 3 (λ () (make-cell (cons 2 (λ () (make-cell (cons 1 (λ () empty))))))))))
-;; should be the same as
-;(define example-list2 (make-cell (l-cons 3 (l-cons 2 (l-cons 1 empty)))))
-
 ;; ==================== EXAMPLE FUNCTIONS =======================
 
 (define/memo (add1 c)
@@ -292,38 +295,13 @@
 
 ;; ========================= MERGESORT ========================== 
 
-#;(define input (make-cell (cons (cons 3 empty)
-                                 (make-cell (cons (cons 2 empty)
-                                                  (make-cell (cons (cons 1 empty)
-                                                                   empty)))))))
-
-(define input (make-cell 
-               (cons (cons (make-cell 3) empty)
-                     (make-cell 
-                      (cons (cons (make-cell 6) empty)
-                            (make-cell 
-                             (cons (cons (make-cell 9) empty)
-                                   (make-cell 
-                                    (cons (cons (make-cell 2) empty)
-                                          (make-cell 
-                                           (cons (cons (make-cell 4) empty)
-                                                 (make-cell 
-                                                  (cons (cons (make-cell 5) empty)
-                                                        (make-cell 
-                                                         (cons (cons (make-cell 8) empty)
-                                                               (make-cell 
-                                                                (cons (cons (make-cell 1) empty)
-                                                                      empty)))))))))))))))))
 (define/memo (merge-sort l)
-  (printf "merge-sort ~a~n" l)
   (let ([fl (force l)])
-    (printf "merge-sort ~a~n" fl)
     (cond
       [(empty? (force (cdr fl))) (car fl)]
       [else (force (merge-sort (force (merge-sort-helper fl))))])))
 
 (define/memo (merge-sort-helper l)
-  (printf "merge-sort-helper ~a~n" l)
   (cond 
     [(empty? l) empty]
     [(empty? (cdr l)) l]
@@ -332,7 +310,6 @@
                 (force (merge-sort-helper (force (cdr (force (cdr l)))))))]))
 
 (define/memo (merge l r)
-  (printf "merge ~a ~a~n" l r)
   (cond 
     [(and (empty? l) (empty? r)) empty]
     [(empty? l) r]
@@ -407,3 +384,190 @@
                                                     (node-thunk old-n)
                                                     (node-result old-n))))
     (update-predecessors id (cdr l))))
+
+;; ========================= NON-ADAPTON MERGE-SORT ==========================
+
+(define (merge-sort-default l)
+  (cond
+    [(empty? (cdr l)) (car l)]
+    [else (merge-sort-default (merge-sort-helper-d l))]))
+
+(define (merge-sort-helper-d l)
+  (cond 
+    [(empty? l) empty]
+    [(empty? (cdr l)) l]
+    [else (cons (merge-d (car l)
+                         (car (cdr l)))
+                (merge-sort-helper-d (cdr (cdr l))))]))
+
+(define (merge-d l r)
+  (cond 
+    [(and (empty? l) (empty? r)) empty]
+    [(empty? l) r]
+    [(empty? r) l]
+    [(<= (car l) (car r))
+     (cons (car l)
+           (merge-d (cdr l) r))]
+    [else 
+     (cons (car r)
+           (merge-d l (cdr r)))]))
+
+
+;; ================================= TESTING =================================
+;; Tools for testing
+
+(define (get-list-from-mergesort a)
+  (cond
+    [(empty? (cdr a)) (cons (force (car a)) empty)]
+    [else (cons (force (car a))
+                (get-list-from-mergesort (force (cdr a))))]))
+
+(define (print-list-from-delayed-list l)
+  (cond
+    [(empty? l) empty]
+    [else (cons (list (force (car (car (force l)))))
+                (print-list-from-delayed-list (cdr (force l))))]))
+
+(define (m-cons l r)
+  (make-cell (cons (cons (make-cell l) empty)
+                   r)))
+
+;; A cell containing a 1 element list
+(define test-cell (make-cell (cons (cons (make-cell 1) empty)
+                                   empty)))
+
+;; A cell containing a number
+(define test-cell-2 (make-cell 1))
+
+;; The list '((3) (2) (1))
+(define short-input (m-cons 3 (m-cons 2 (m-cons 1 empty))))
+
+;; The list '((3) (6) (9) (2) (4) (5) (8) (1))
+(define long-input (make-cell 
+                    (cons (cons (make-cell 3) empty)
+                          (make-cell 
+                           (cons (cons (make-cell 6) empty)
+                                 (make-cell 
+                                  (cons (cons (make-cell 9) empty)
+                                        (make-cell 
+                                         (cons (cons (make-cell 2) empty)
+                                               (make-cell 
+                                                (cons (cons (make-cell 4) empty)
+                                                      (make-cell 
+                                                       (cons (cons (make-cell 5) empty)
+                                                             (make-cell 
+                                                              (cons (cons (make-cell 8) empty)
+                                                                    (make-cell 
+                                                                     (cons (cons (make-cell 1) empty)
+                                                                           empty)))))))))))))))))
+
+(define (build-input n)
+  (cond 
+    [(< n 1) empty]
+    [else (m-cons n (build-input (- n 1)))]))
+
+(define (build-list n)
+  (cond
+    [(< n 1) empty]
+    [else (cons (cons n empty) (build-list (- n 1)))]))
+
+;; The list of singleton lists from 100 - 1
+(define longer-input (build-input 100))
+(define longest-input (build-input 1000))
+(define longest-list (build-list 1000))
+(define longest-list-mutated (append (remove '(1) longest-list) (list (list 0))))
+
+(define a (merge-sort short-input))
+(define b (merge-sort long-input))
+(define c (merge-sort longer-input))
+(define d (merge-sort longest-input))
+
+(define mergesort-tests
+  (test-suite
+   "testing correctness of mergesort for adapton"
+   
+   (check-equal? (unbox (cell-box (hash-ref *cells* 3))) 1 "test creation of *cells* entry")
+   (check-equal? (read-cell test-cell-2) 1 "test read-cell function")
+   (check-exn    exn:fail? (λ () (read-cell/update test-cell-2)) "read-cell/update with no stack throws exn")
+   (check-equal? (force (car (car (force test-cell)))) 1 "test extracting value from cell")
+   (check-equal? (force (car (car (force (cdr (force short-input)))))) 2 "test force on cell in list")
+   (check-equal? (print-list-from-delayed-list short-input) '((3) (2) (1)) "test list structure")
+   (check-equal? (get-list-from-mergesort (force a)) 
+                 '(1 2 3)
+                 "test mergesort on short list")
+   (check-equal? (get-list-from-mergesort (force b))
+                 '(1 2 3 4 5 6 8 9)
+                 "test mergesort on long list")
+   (check-not-exn (λ () (set-cell! 15 0)) "test set-cell!")
+   (check-equal? (unbox (cell-box (hash-ref *cells* 15))) 0 "test effect of set-cell!")
+   (check-equal? (andmap node-dirty 
+                         (map (λ (a) (hash-ref *memo-table* a)) 
+                              (cell-predecessors (hash-ref *cells* 15))))
+                 #t 
+                 "check proper node dirtying after set-cell!")
+   (check-equal? (get-list-from-mergesort (force (hash-ref *memo-table* (node-id b))))
+                 '(0 1 2 3 4 6 8 9)
+                 "re-build list after set-cell!")))
+
+(define small-timed-tests
+  (test-suite
+   "testing performance of adapton mergesort vs regular mergesort"
+   
+   (check-equal? (time (get-list-from-mergesort (force b)))
+                 (time (merge-sort-default '((3) (6) (9) (2) (4) (5) (8) (1))))
+                 "compare first sort times")
+   (check-equal? (time (get-list-from-mergesort (force b)))
+                 (time (merge-sort-default '((3) (6) (9) (2) (4) (5) (8) (1))))
+                 "compare second sort times")
+   (check-not-exn (λ () (set-cell! 15 0))
+                  "mutate input")
+   (check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id b)))))
+                 (time (merge-sort-default '((3) (6) (9) (2) (4) (0) (8) (1))))
+                 "compare times after mutation")))
+
+(define medium-timed-tests
+  (test-suite
+   "testing performance of adapton mergesort vs regular mergesort"
+   
+   (check-equal? (time (get-list-from-mergesort (force c)))
+                 (time (merge-sort-default (build-list 100)))
+                 "compare first sort times")
+   (check-equal? (time (get-list-from-mergesort (force c)))
+                 (time (merge-sort-default (build-list 100)))
+                 "compare second sort times")
+   #;(check-not-exn (λ () (set-cell! 224 0))
+                  "mutate input")
+   (check-not-exn (λ () (set-cell! 26 0))
+                  "mutuate input")
+   #;(check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id c)))))
+                 (time (merge-sort-default (cons (cons 0 empty) (build-list 99))))
+                 "compare times after mutation")
+   (check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id c)))))
+                 (time (merge-sort-default (append (remove '(1) (build-list 100)) (list (list 0)))))
+                 "compare times after mutation")))
+
+(define long-timed-tests
+  (test-suite
+   "testing performance of adapton mergesort vs regular mergesort"
+   
+   (check-equal? (time (get-list-from-mergesort (force d)))
+                 (time (merge-sort-default longest-list))
+                 "compare first sort times")
+   (check-equal? (time (get-list-from-mergesort (force d)))
+                 (time (merge-sort-default longest-list))
+                 "compare second sort times")
+   #;(check-not-exn (λ () (set-cell! 224 0))
+                  "mutate input")
+   (check-not-exn (λ () (set-cell! 226 0))
+                  "mutuate input")
+   #;(check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id d)))))
+                 (time (merge-sort-default (cons (cons 0 empty) longest-list)))
+                 "compare times after mutation")
+   (check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id d)))))
+                 (time (merge-sort-default longest-list-mutated))
+                 "compare times after mutation")))
+   
+
+
+
+
