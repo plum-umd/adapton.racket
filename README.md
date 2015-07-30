@@ -4,7 +4,7 @@ Racket-based implementation of Adapton
 The purpose of this repo is to provide a home for the development of Adapton for 
 the Racket programming langauge. 
 
-================================= General ============================
+## General
 
 Racket is a powerful functional langauge that can be found here:
 http://racket-lang.org/
@@ -20,7 +20,7 @@ There are a number of papers on Adapton by Matthew Hammer, the first of which ca
 be found here: http://www.cs.umd.edu/~hammer/adapton/
 
 
-=============================== Using Adapton ==========================
+## Using Adapton 
 
 Adapton has two key data structures: cells and nodes. Cells are structures
 which contain mutable boxes. Inside these boxes the user should place input
@@ -43,7 +43,7 @@ difficult, just like learning to program lazily can be difficult. There are,
 however, situations where the power gained by programming in this way can 
 be worth the effort. 
 
-===================== Understanding the code in this repo ====================
+## Understanding the code in this repo 
 
 The code in this repo is seperated into several files to make it more managable.
 Each file in the repo has a brief comment at the top of the file that describes 
@@ -58,7 +58,7 @@ contain your algorithm. Once your code is written, either import the "tools-for-
 file, or consider creating a new file for your tests that leverages the code in 
 the files related to testing.
 
-============================== Graphing ===============================
+## Graphing 
 
 There is code throughout the repo that builds a visual representation of the DCG
 of your program. Obviously this code will effect performance, and so can be turned 
