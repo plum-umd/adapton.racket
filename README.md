@@ -58,6 +58,9 @@ contain your algorithm. Once your code is written, either import the "tools-for-
 file, or consider creating a new file for your tests that leverages the code in 
 the files related to testing.
 
+If you are using DrRacket, you can right click on any function and select "go 
+to source file" to open the file containing the function definition. 
+
 ## Graphing 
 
 There is code throughout the repo that builds a visual representation of the DCG
