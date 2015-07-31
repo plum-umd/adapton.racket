@@ -26,7 +26,7 @@
 
 ;; ======================== DATA STRUCTURES =====================
 ;; node structure
-(struct node (id dirty successors predecessors creator thunk result))
+(struct node (id dirty successors predecessors creator thunk result) #:transparent)
 
 ;; USER NODE
 ;; serves as root node for all user forced nodes
@@ -45,7 +45,7 @@
 ;; id is the target of the edge
 ;; result is the this edge's knowledge of the old result
 ;; of its target.
-(struct edge (type id result))
+(struct edge (type id result) #:transparent)
 
 ;; cell structure
-(struct cell (id box predecessors dirty))
+(struct cell (id box predecessors dirty) #:transparent)

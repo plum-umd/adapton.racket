@@ -6,9 +6,7 @@
 ;; - force for nodes and cells
 
 (require (prefix-in r: (only-in racket delay force equal-hash-code))
-         racket/format
          rackunit
-         rackunit/text-ui
          "memo-table-modification-tools.rkt"
          "graphing.rkt"
          "data-structures.rkt")
@@ -21,7 +19,7 @@
 ;; any function that you want to be tracked by adapton should use define/memo.
 
 ;; tests for define/memo
-#;
+
 (module+ test
   (define/memo (add1 n) ;;return a node that adds 1 to n
     (+ 1 n))

@@ -6,7 +6,8 @@
 (require "merge-sort.rkt"
          "adapton.rkt"
          "tools-for-testing.rkt"
-         "data-structures.rkt")
+         "data-structures.rkt"
+         "memo-table-modification-tools.rkt")
 
 ;; A cell containing a 1 element list
 #;(define test-cell (make-cell (cons (cons (make-cell 1) empty)

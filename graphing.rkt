@@ -9,9 +9,14 @@
 
 ;; ============= GRAPH ===============
 
-(displayln (current-directory))
-
 (define graphing-on #f)
+
+(when graphing-on
+  (displayln "graphing is ON and this file is running in:")
+  (displayln (current-directory)))
+
+(when (not graphing-on)
+  (displayln "graphing is OFF"))
 
 (define file (string-append (~a (current-directory)) "graph.gmv"))
 (when graphing-on
