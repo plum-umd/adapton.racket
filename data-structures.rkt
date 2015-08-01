@@ -26,7 +26,7 @@
 ;; creator. having a seperate stack for create edges allows us to have 
 ;; creation edges between a "user node (00000)" and nodes with no predecessor.
 
-;; create-edges are necessary for purge-table to work properly, and require
+;; create-edges are necessary for purge-unreachable to work properly, and require
 ;; the user to run the initial input by creating a thunk and storing it in 
 ;; the node 00000. The user then forces the user node to run his or her code.
 
@@ -60,7 +60,7 @@
 ;; type is one of 'n (node) or 'c (cell),
 ;; id is the target of the edge
 ;; result is the this edge's knowledge of the old result of its target.
-(struct edge (type id result))
+(struct edge (type id result) #:transparent)
 
 ;; cell structure
-(struct cell (id box predecessors dirty))
+(struct cell (id box predecessors dirty) #:transparent)

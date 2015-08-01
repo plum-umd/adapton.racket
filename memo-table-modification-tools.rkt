@@ -227,7 +227,7 @@
                      0
                      (node-thunk n)
                      '())])
-    
+     
     (if (begin (write-to-graph 
                 (format "[change]checking successors~n[node ~a blue]~n" 
                         (node-id n)))
@@ -274,7 +274,7 @@
 
 ;; ===================================================================
 
-;; purge-table takes a list (usually from find-unreachable)
+;; purge-unreachable takes a list (usually from find-unreachable)
 ;; and removes unreachable nodes from the table and graph
 ;; --- note: this function must be called manually ---
 
@@ -333,3 +333,108 @@
 (define (reachable? node)
   (or (not (empty? (node-predecessors node)))
       (equal? 00000 (node-creator node))))
+
+;; ===================================================================
+
+;; An articulation point is one of 
+;;    | node
+;;    | cell
+
+;; forcing an articulation point computes its result.
+;; for nodes, the result is computed and stored in the node structure.
+;; For cells, the result is the value contained in the cell's box.
+
+;; Force also keeps track of the relationships between nodes and cells,
+;; building the DCG each time an articulation point is forced. We use
+;; a stack to keep track of which AP is currently being forced, and 
+;; leverage the information stored in that stack to update predecessors
+;; and successors for each AP.
+(define (force a)
+  (cond
+    [(node? a)
+     ;; update the stack by adding this node to it
+     (set-box! stack (cons (node-id a) (unbox stack)))
+     (set-box! create-stack (cons (node-id a) (unbox create-stack)))
+     ;; is this node dirty?
+     (if (node-dirty (hash-ref *memo-table* (node-id a)))
+         ;; if yes, clean it and return the cleaned result
+         (begin (set-box! stack (cdr (unbox stack)))
+                (set-box! create-stack (cdr (unbox create-stack)))
+                (let ([result (clean a)])
+                  result))
+         ;; otherwise
+         ;; check to see if this node is already memoized, if it is use the old result
+         (if (not (empty? (node-result (hash-ref *memo-table* (node-id a)))))
+             (let ([result (node-result (hash-ref *memo-table* (node-id a)))])
+               ;; if there exits a node below this node on the stack, add this node to 
+               ;; that node's successors and that node to this node's predecessors 
+               (when (not (empty? (cdr (unbox stack))))
+                 (node-update *memo-table* 
+                              (car (cdr (unbox stack))) 
+                              "successors" 
+                              (edge 'n
+                                    (node-id a)
+                                    result))
+                 (write-to-graph (format "[change]add edge~n[edge ~a ~a]~n" 
+                                         (car (cdr (unbox stack))) 
+                                         (node-id a)))
+                 (node-update *memo-table* (node-id a) 
+                              "predecessors" (car (cdr (unbox stack))))) 
+               (set-box! stack (cdr (unbox stack)))
+               (set-box! create-stack (cdr (unbox create-stack)))
+               result)
+             ;; otherwise
+             ;; compute the result of the thunk in the node
+             (let ([result ((node-thunk a))])
+               ;; store the result in the table
+               (node-update *memo-table* (node-id a) "result" result)
+               ;; if there exits a node below this node on the stack, add this node to 
+               ;; that node's successors and that node to this node's predecessors
+               (when (not (empty? (cdr (unbox stack))))
+                 (node-update *memo-table* 
+                              (car (cdr (unbox stack))) 
+                              "successors" 
+                              (edge 'n
+                                    (node-id a)
+                                    result))
+                 (write-to-graph (format "[change]add edge~n[edge ~a ~a]~n" 
+                                         (car (cdr (unbox stack))) 
+                                         (node-id a)))
+                 (node-update *memo-table* (node-id a) 
+                              "predecessors" (car (cdr (unbox stack)))))
+               ;; remove this node from the top of the stack
+               (set-box! stack (cdr (unbox stack)))
+               (set-box! create-stack (cdr (unbox create-stack)))
+               ;; return the result
+               result)))]
+    [(cell? a) 
+     ;; update the stack by adding this cell to it
+     (set-box! stack (cons (cell-id a) (unbox stack)))
+     (set-box! create-stack (cons (cell-id a) (unbox create-stack)))
+     ;; if there exits a node below this cell on the stack, add this cell to 
+     ;; that node's successors and that node to this cell's predecessors
+     (when (and (not (empty? (unbox stack)))
+                (not (empty? (cdr (unbox stack)))))
+       (node-update *memo-table* 
+                    (car (cdr (unbox stack))) 
+                    "successors" 
+                    (edge 'c
+                          (cell-id a) 
+                          '()))
+       (write-to-graph (format "[change]add edge~n[edge ~a ~a]~n" 
+                               (car (cdr (unbox stack))) 
+                               (cell-id a)))
+       (let ([old-cell (hash-ref *cells* (cell-id a))])
+         (hash-set! *cells* 
+                    (cell-id a) 
+                    (cell (cell-id a)
+                          (cell-box old-cell)
+                          (cons (car (cdr (unbox stack))) 
+                                (cell-predecessors old-cell))
+                          (cell-dirty old-cell)))))
+     ;; extract the value of this cell
+     (let ([result (unbox (cell-box a))])
+       (set-box! stack (cdr (unbox stack)))
+       (set-box! create-stack (cdr (unbox create-stack)))
+       result)]
+    [else a]))

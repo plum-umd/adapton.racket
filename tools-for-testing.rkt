@@ -22,7 +22,6 @@
 
 (define (get-list-from-mergesort a)
   (map force (get-unforced-list-from-mergesort a)))
-
 ;; ================================================
 
 ;; get-unforced-list-from-mergesort 
@@ -145,8 +144,8 @@
 
 ;; ==================================================
 
-;; build-trivial-list builds a list of n singleton lists 
-;; consisting of the element 1.
+;; build-list builds a list of n singleton lists 
+;; consisting of the elements n through 1.
 
 (module+ test
   (check-equal? (build-list 10)
@@ -156,3 +155,10 @@
   (cond
     [(< n 1) empty]
     [else (cons (cons n empty) (build-list (- n 1)))]))
+
+;; ==================================================
+
+;; print cells prints the cells table in a sane way
+(define (print-cells)
+  (hash-map *cells* (λ (a b) (when (number? (unbox (cell-box b)))
+                               (cons a (unbox (cell-box b)))))))

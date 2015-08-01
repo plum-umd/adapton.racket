@@ -1,163 +1,452 @@
 #lang racket
-;; This file contains a number of tests for adapton
-;; Most of this file will be commented out, to prevent unnecessary additions to the 
-;; global hash-tables.
 
-(require "merge-sort.rkt"
+;; This file contains a number of tests for adapton.
+;; definitions of input lists are placed inside the test-suites
+;; to prevent tables from interfering with one another,
+;; and each test-suite begins by purging all tables.
+
+(require rackunit
+         rackunit/text-ui
+         "merge-sort.rkt"
          "adapton.rkt"
          "tools-for-testing.rkt"
          "data-structures.rkt"
          "memo-table-modification-tools.rkt")
 
-;; A cell containing a 1 element list
-#;(define test-cell (make-cell (cons (cons (make-cell 1) empty)
-                                   empty)))
 
-;; A cell containing a number
-;(define test-cell-2 (make-cell 1))
+;; =============================================================================
 
-;; The list '((3) (2) (1))
-;(define tiny-input (m-cons 3 (m-cons 2 (m-cons 1 empty))))
-
-;(define small-input (m-cons 5 (m-cons 4 (m-cons 3 (m-cons 2 (m-cons 1 empty))))))
-
-;; The list '((3) (6) (9) (2) (4) (5) (8) (1))
-#;(define less-small-input (make-cell 
-                          (cons (cons (make-cell 3) empty)
-                                (make-cell 
-                                 (cons (cons (make-cell 6) empty)
-                                       (make-cell 
-                                        (cons (cons (make-cell 9) empty)
-                                              (make-cell 
-                                               (cons (cons (make-cell 2) empty)
-                                                     (make-cell 
-                                                      (cons (cons (make-cell 4) empty)
-                                                            (make-cell 
-                                                             (cons (cons (make-cell 5) empty)
-                                                                   (make-cell 
-                                                                    (cons (cons (make-cell 8) empty)
-                                                                          (make-cell 
-                                                                           (cons (cons (make-cell 1) empty)
-                                                                                 empty)))))))))))))))))
-
-
-;; The list of singleton lists from 100 - 1
-;(define medium-input (build-input 100))
-;(define longer-input (build-input 1000))
-;(define longer-list (build-list 1000))
-;(define longer-list-mutated (append (remove '(1) longer-list) (list (list 0))))
-;(define longest-input (build-trivial-input 10000))
-;(define longest-list (build-list 10000))
-;(define longest-list-mutated (append (remove '(1) longest-list) (list (list 0))))
-
-;(define a (merge-sort tiny-input))
-;(define b (merge-sort small-input))
-;(define b2 (merge-sort less-small-input))
-;(define c (merge-sort medium-input))
-;(define d (merge-sort longer-input))
-;(define e (merge-sort longest-input))
-
-#;(define mergesort-tests
+;; test several adapton functions and ensure mergesort is properly working
+(define correctness-tests
   (test-suite
    "testing correctness of mergesort for adapton"
    
-   (check-equal? (unbox (cell-box (hash-ref *cells* 3))) 1 "test creation of *cells* entry")
-   (check-equal? (read-cell test-cell-2) 1 "test read-cell function")
-   (check-exn    exn:fail? (λ () (read-cell/update test-cell-2)) "read-cell/update with no stack throws exn")
-   (check-equal? (force (car (car (force test-cell)))) 1 "test extracting value from cell")
-   (check-equal? (force (car (car (force (cdr (force tiny-input)))))) 2 "test force on cell in list")
-   (check-equal? (print-list-from-delayed-list tiny-input) '((3) (2) (1)) "test list structure")
-   (check-equal? (get-list-from-mergesort (force a)) 
-                 '(1 2 3)
-                 "test mergesort on short list")
-   (check-equal? (get-list-from-mergesort (force b))
-                 '(1 2 3 4 5 6 8 9)
-                 "test mergesort on long list")
-   (check-not-exn (λ () (set-cell! 15 0)) "test set-cell!")
-   (check-equal? (unbox (cell-box (hash-ref *cells* 15))) 0 "test effect of set-cell!")
-   (check-equal? (andmap node-dirty 
-                         (map (λ (a) (hash-ref *memo-table* a)) 
-                              (cell-predecessors (hash-ref *cells* 15))))
-                 #t 
-                 "check proper node dirtying after set-cell!")
-   (check-equal? (get-list-from-mergesort (force (hash-ref *memo-table* (node-id b))))
-                 '(0 1 2 3 4 6 8 9)
-                 "re-build list after set-cell!")))
-
-#;(define small-timed-tests
-  (test-suite
-   "testing performance of adapton mergesort vs regular mergesort"
+   #:before (lambda () (displayln "Beginning correctness tests"))
+   #:after  (lambda () (displayln "Correctness tests finished"))
    
-   (check-equal? (time (get-list-from-mergesort (force b)))
-                 (time (merge-sort-default '((3) (6) (9) (2) (4) (5) (8) (1))))
-                 "compare first sort times")
-   (check-equal? (time (get-list-from-mergesort (force b)))
-                 (time (merge-sort-default '((3) (6) (9) (2) (4) (5) (8) (1))))
-                 "compare second sort times")
-   (check-not-exn (λ () (set-cell! 15 0))
-                  "mutate input")
-   (check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id b)))))
-                 (time (merge-sort-default '((3) (6) (9) (2) (4) (0) (8) (1))))
-                 "compare times after mutation")))
-
-#;(define medium-timed-tests
-  (test-suite
-   "testing performance of adapton mergesort vs regular mergesort"
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
    
-   (check-equal? (time (get-list-from-mergesort (force c)))
-                 (time (merge-sort-default (build-list 100)))
-                 "compare first sort times")
-   (check-equal? (time (get-list-from-mergesort (force c)))
-                 (time (merge-sort-default (build-list 100)))
-                 "compare second sort times")
-   #;(check-not-exn (λ () (set-cell! 224 0))
-                    "mutate input")
-   (check-not-exn (λ () (set-cell! 26 0))
-                  "mutuate input")
-   #;(check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id c)))))
-                   (time (merge-sort-default (cons (cons 0 empty) (build-list 99))))
-                   "compare times after mutation")
-   (check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id c)))))
-                 (time (merge-sort-default (append (remove '(1) (build-list 100)) (list (list 0)))))
-                 "compare times after mutation")))
-
-#;(define long-timed-tests
-  (test-suite
-   "testing performance of adapton mergesort vs regular mergesort"
-   
-   (check-equal? (time (get-list-from-mergesort (force d)))
-                 (time (merge-sort-default longer-list))
-                 "compare first sort times")
-   (check-equal? (time (get-list-from-mergesort (force d)))
-                 (time (merge-sort-default longer-list))
-                 "compare second sort times")
-   #;(check-not-exn (λ () (set-cell! 224 0))
-                    "mutate input")
-   (check-not-exn (λ () (set-cell! 236 0))
-                  "mutuate input")
-   #;(check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id d)))))
-                   (time (merge-sort-default (cons (cons 0 empty) longest-list)))
-                   "compare times after mutation")
-   (check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id d)))))
-                 (time (merge-sort-default longer-list-mutated))
-                 "compare times after mutation")))
-
-#;(define longest-timed-tests
-    (test-suite
-     "testing performance of adapton mergesort vs regular mergesort"
+   ;; define some cells
+   (let* ([simple-input (make-cell 
+                         (cons (cons (make-cell 9) empty)
+                               (make-cell
+                                (cons (cons (make-cell 6) empty)
+                                      (make-cell 
+                                       (cons (cons (make-cell 3) empty)
+                                             empty))))))]
+          [medium-input (m-cons 4 (m-cons 2 (m-cons 6 (m-cons 1 empty))))]
+          [bigger-input (build-input 10)]
+          [trivial-input (build-trivial-input 10)]
+          [n1 (merge-sort simple-input)]
+          [n2 (merge-sort medium-input)]
+          [n3 (merge-sort bigger-input)]
+          [n4 (merge-sort trivial-input)])
      
-     (check-equal? (time (get-list-from-mergesort (force e)))
-                   (time (merge-sort-default longest-list))
-                   "compare first sort times")
-     (check-equal? (time (get-list-from-mergesort (force e)))
-                   (time (merge-sort-default longest-list))
-                   "compare second sort times")
-     (check-not-exn (λ () (set-cell! 36 0))
-                      "mutuate input")
-     (check-equal? (time (get-list-from-mergesort (force (hash-ref *memo-table* (node-id e)))))
-                     (time (merge-sort-default longest-list-mutated))
-                     "compare times after mutation")))
+     (test-case
+      "test that cells are being created properly"
+      (check-equal? (unbox (cell-box (hash-ref *cells* 3))) 3))
+     (test-case
+      "test the read-cell function"
+      (check-equal? (read-cell (hash-ref *cells* 2)) 6))
+     (test-case
+      "read-cell/update should throw an exn when there is nothing on the stack"
+      (check-exn exn:fail? (λ () (read-cell/update (hash-ref *cells* 1)))))
+     (test-case
+      "test forcing a cell"
+      (check-equal? (force (car (car (force simple-input)))) 9))
+     (test-case
+      "test forcing a cell deeper in a list"
+      (check-equal? (force (car (car (force (cdr (force simple-input)))))) 6))
+     (test-case
+      "test that list is properly strutured"
+      (check-equal? (print-list-from-delayed-list simple-input) '((9) (6) (3))))
+     (test-case
+      "test-mergesort on short list"
+      (check-equal? (get-list-from-mergesort (force n1))
+                    '(3 6 9)))
+     (test-case
+      "test mergesort on medium list"
+      (check-equal? (get-list-from-mergesort (force n2))
+                    '(1 2 4 6)))
+     (test-case
+      "test set-cell!"
+      (check-not-exn (λ () (set-cell! 1 0))))
+     (test-case
+      "test effect of set-cell!"
+      (check-equal? (unbox (cell-box (hash-ref *cells* 1))) 0))
+     (test-case
+      "test set-cell! is properly dirtying predecessors"
+      (check-equal? (andmap node-dirty 
+                            (map (λ (a) (hash-ref *memo-table* a))
+                                 (cell-predecessors (hash-ref *cells* 1)))) #t))
+     (test-case
+      "test rebuild list after mutation of input"
+      (check-equal? 
+       (get-list-from-mergesort 
+        (force (hash-ref *memo-table* (node-id n1))))
+       '(0 3 6))))))
 
+;; =============================================================================
 
-;(run-tests long-timed-tests)
+(define timed-tests-0
+  (test-suite
+   "testing time to sort a 10 element list,~n 
+    worst case (reverse-sorted)~n"
+   
+   #:before (lambda () (displayln "--> testing time to sort a 10 element list,
+--> worst case (reverse-sorted)"))
+   #:after  (lambda () (displayln "timed-tests-1 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-input 3)]
+          [t_2 (merge-sort t)])
+     
+     ;; define our expected outputs
+     ;; list '(1 2 3 ... 9 10)
+     (define (foo m n)
+       (cond
+         [(> m n) empty]
+         [else (cons m (foo (+ 1 m) n))]))
+     
+     (displayln "--> time to sort")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (foo 1 3))
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (foo 1 3))
+     (set-cell! 1 0)
+     (displayln "--> time to re-sort after mutation")
+     (check-equal? (time (get-list-from-mergesort 
+                          (force (hash-ref *memo-table* (node-id t_2)))))
+                   (cons 0 (remove 1 (foo 1 3)))))))
+
+;; =============================================================================
+
+(define timed-tests-1
+  (test-suite
+   "testing time to sort a 1000 element list,~n 
+    worst case (reverse-sorted)~n"
+   
+   #:before (lambda () (displayln "--> testing time to sort a 1000 element list,
+--> worst case (reverse-sorted)"))
+   #:after  (lambda () (displayln "timed-tests-1 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-input 1000)]
+          [t_2 (merge-sort t)])
+     
+     ;; define our expected outputs
+     ;; list '(1 2 3 ... 999 1000)
+     (define (foo m n)
+       (cond
+         [(> m n) empty]
+         [else (cons m (foo (+ 1 m) n))]))
+     
+     (displayln "--> time to sort")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (foo 1 1000))
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (foo 1 1000))
+     (set-cell! 1 0)
+     (displayln "--> time to re-sort after mutation")
+     (check-equal? (time (get-list-from-mergesort 
+                          (force (hash-ref *memo-table* (node-id t_2)))))
+                   (cons 0 (remove 1 (foo 1 1000)))))))
+
+;; =============================================================================
+
+(define timed-tests-2
+  (test-suite
+   "testing time to get the first element from a 1000 element list,~n 
+    worst case (reverse-sorted)~n"
+   
+   #:before (lambda () (displayln "--> testing time to get first from 1000 element list,
+--> worst case (reverse-sorted)"))
+   #:after  (lambda () (displayln "timed-tests-2 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-input 1000)]
+          [t_2 (merge-sort t)])
+     
+     (displayln "--> time to get first element")
+     (check-equal? (time (force (car (force t_2))))
+                   1)
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (force (car (force t_2))))
+                   1)
+     (set-cell! 1 0)
+     (displayln "--> time to get new first element after mutation")
+     (check-equal? (time (force (car (force (hash-ref *memo-table* 
+                                                      (node-id t_2))))))
+                   0))))
+
+;; =============================================================================
+
+(define timed-tests-3
+  (test-suite
+   "testing time to sort a 10000 element list,~n 
+    worst case (reverse-sorted)~n"
+   
+   #:before (lambda () (displayln "--> testing time to sort a 10000 element list,
+--> worst case (reverse-sorted)"))
+   #:after  (lambda () (displayln "timed-tests-3 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-input 10000)]
+          [t_2 (merge-sort t)])
+     
+     ;; define our expected outputs
+     ;; list '(1 2 3 ... 9999 10000)
+     (define (foo m n)
+       (cond
+         [(> m n) empty]
+         [else (cons m (foo (+ 1 m) n))]))
+     
+     (displayln "--> time to sort")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (foo 1 10000))
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (foo 1 10000))
+     (set-cell! 1 0)
+     (displayln "--> time to re-sort after mutation")
+     (check-equal? (time (get-list-from-mergesort 
+                          (force (hash-ref *memo-table* (node-id t_2)))))
+                   (cons 0 (remove 1 (foo 1 10000)))))))
+
+;; =============================================================================
+
+(define timed-tests-4
+  (test-suite
+   "testing time to sort a 10000 element list,~n 
+    worst case (reverse-sorted)~n"
+   
+   #:before (lambda () (displayln "--> testing time to sort a 10000 element list,
+--> worst case (reverse-sorted)"))
+   #:after  (lambda () (displayln "timed-tests-4 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-input 10000)]
+          [t_2 (merge-sort t)])
+     
+     (displayln "--> time to get first element")
+     (check-equal? (time (force (car (force t_2))))
+                   1)
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (force (car (force t_2))))
+                   1)
+     (set-cell! 1 0)
+     (displayln "--> time to get new first element after mutation")
+     (check-equal? (time (force (car (force (hash-ref *memo-table* 
+                                                      (node-id t_2))))))
+                   0))))
+
+;; =============================================================================
+
+;; --- warning, these tests are VERY BIG ---
+(define timed-tests-5
+  (test-suite
+   "testing time to sort a 100000 element list,~n 
+    worst case (reverse-sorted)~n"
+   
+   #:before (lambda () (displayln "--> testing time to sort a 100000 element list,
+--> worst case (reverse-sorted)"))
+   #:after  (lambda () (displayln "timed-tests-5 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-input 100000)]
+          [t_2 (merge-sort t)])
+     
+     ;; define our expected outputs
+     ;; list '(1 2 3 ... 9999 10000)
+     (define (foo m n)
+       (cond
+         [(> m n) empty]
+         [else (cons m (foo (+ 1 m) n))]))
+     
+     (displayln "--> time to sort")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (foo 1 100000))
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (foo 1 100000))
+     (set-cell! 1 0)
+     (displayln "--> time to re-sort after mutation")
+     (check-equal? (time (get-list-from-mergesort 
+                          (force (hash-ref *memo-table* (node-id t_2)))))
+                   (cons 0 (remove 1 (foo 1 100000)))))))
+
+;; =============================================================================
+
+;; --- warning, these tests are VERY BIG ---
+(define timed-tests-6
+  (test-suite
+   "testing time to get the first element of a 100000 element list,~n 
+    worst case (reverse-sorted)~n"
+   
+   #:before (lambda () (displayln "--> testing time to sort a 100000 element list,
+--> worst case (reverse-sorted)"))
+   #:after  (lambda () (displayln "timed-tests-6 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-input 100000)]
+          [t_2 (merge-sort t)])
+     
+     (displayln "--> time to get first element")
+     (check-equal? (time (force (car (force t_2))))
+                   1)
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (force (car (force t_2))))
+                   1)
+     (set-cell! 1 0)
+     (displayln "--> time to get new first element after mutation")
+     (check-equal? (time (force (car (force (hash-ref *memo-table* 
+                                                      (node-id t_2))))))
+                   0))))
+
+;; =============================================================================
+
+(define timed-tests-7
+  (test-suite
+   "testing time to get the first element of a 1000 element list,
+    trivial case all 1's"
+   
+   #:before (lambda () (displayln "--> testing time to sort a 1000 element list,
+--> trivial case (all 1's)"))
+   #:after  (lambda () (displayln "timed-tests-7 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-trivial-input 1000)]
+          [t_2 (merge-sort t)])
+     
+     (displayln "--> time to get first element")
+     (check-equal? (time (force (car (force t_2))))
+                   1)
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (force (car (force t_2))))
+                   1)
+     (set-cell! 1 0)
+     (displayln "--> time to get new first element after mutation")
+     (check-equal? (time (force (car (force (hash-ref *memo-table*
+                                                      (node-id t_2))))))
+                   0))))
+
+;; =============================================================================
+
+;; bizzare bug.....
+(define trivial-tests-1
+  (test-suite
+   "testing to ensure bug with list of 1's doesn't happen"
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-trivial-input 89)]
+          [t_2 (merge-sort t)])
+     
+     (check-equal? (force (car (force t_2)))
+                   1)
+     (set-cell! 1 0)
+     (check-equal? (force (car (force (hash-ref *memo-table*
+                                                (node-id t_2)))))
+                   0))))
+
+(define trivial-tests-2
+  (test-suite
+   "testing to ensure bug with list of 1's does happen"
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-trivial-input 90)]
+          [t_2 (merge-sort t)])
+     
+     (check-equal? (force (car (force t_2)))
+                   1)
+     (set-cell! 1 0)
+     (check-equal? (force (car (force (hash-ref *memo-table*
+                                                (node-id t_2)))))
+                   0))))
+
+(define trivial-tests-3
+  (test-suite
+   "testing to ensure bug with list of 1's does happen"
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-trivial-input 90)]
+          [t_2 (merge-sort t)])
+     
+     (check-equal? (force (car (force t_2)))
+                   1)
+     (set-cell! 3 0)
+     (check-equal? (force (car (force (hash-ref *memo-table*
+                                                (node-id t_2)))))
+                   0))))
 
