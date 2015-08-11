@@ -21,7 +21,7 @@
 
 ;; if graphing-on is set to #t, graphing is enabled.
 ;; it can be set to #f to disable all graph-related functions
-(define graphing-on #f)
+(define graphing-on #t)
 
 (when graphing-on
   (displayln "graphing is ON and this file is running in:")

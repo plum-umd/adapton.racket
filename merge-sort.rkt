@@ -71,9 +71,12 @@
     [(and (empty? l) (empty? r)) empty]
     [(empty? l) r]
     [(empty? r) l]
-    [(<= (car l) (car r))
+    [(< (car l) (car r))
      (cons (car l)
            (merge-d (cdr l) r))]
+    [(= (car l) (car r))
+     (cons (car l)
+           (cons (car r) (merge-d (cdr l) (cdr r))))]
     [else 
      (cons (car r)
            (merge-d l (cdr r)))]))
@@ -133,7 +136,12 @@
      (cons (car l)
            (merge (force (cdr l)) r))]
     [(= (force (car l)) (force (car r)))
-     (list (car l) (car r) (merge (force (cdr l)) (force (cdr r))))]
+     (cons (car l)
+           (n-cons (car r)
+                   (merge (force (cdr l)) (force (cdr r)))))]
     [else 
      (cons (car r)
            (merge l (force (cdr r))))]))
+
+(define/memo (n-cons l r)
+  (cons l r))

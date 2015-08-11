@@ -264,12 +264,12 @@
      (begin (clean (hash-ref *memo-table* (edge-id e)))
             (if (equal? (edge-result e)
                         (node-result (hash-ref *memo-table* (edge-id e))))
-                #t
+                #f
                 #f))]
     [(equal? (edge-type e) 'n)
      (if (equal? (edge-result e)
                  (node-result (hash-ref *memo-table* (edge-id e))))
-         #t
+         #f
          #f)]))
 
 ;; ===================================================================

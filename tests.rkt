@@ -13,6 +13,18 @@
          "data-structures.rkt"
          "memo-table-modification-tools.rkt")
 
+;; to help with mutation
+(define (foo n)
+  (cond
+    [(< n 1) empty]
+    [else (cons (random 100) (foo (- n 1)))]))
+
+(define (bar l n)
+  (cond
+    [(or (empty? l) (< n 1)) "done"]
+    [else (set-cell! (- (* 2 n) 1) (car l))
+          (bar (cdr l) (- n 1))]))
+
 
 ;; =============================================================================
 
@@ -448,5 +460,83 @@
      (set-cell! 3 0)
      (check-equal? (force (car (force (hash-ref *memo-table*
                                                 (node-id t_2)))))
+                   0))))
+
+(define trivial-tests-4
+  (test-suite
+   "testing to ensure bug with list of 1's does happen"
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   (let ([foo (λ (n)
+                (cond
+                  [(< n 1) empty]
+                  [else (m-cons 0 (build-trivial-input (- n 1)))]))])
+     ;; define our test input
+     (let* ([t (foo 90)]
+            [t_2 (merge-sort t)])
+       
+       (check-equal? (force (car (force t_2)))
+                     0)
+       (set-cell! 1 1)
+       (check-equal? (force (car (force (hash-ref *memo-table*
+                                                  (node-id t_2)))))
+                     1)))))
+
+(define trivial-tests-5
+  (test-suite
+   "testing to ensure bug with list of 1's does happen"
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-trivial-input 90)]
+          [t_2 (merge-sort t)])
+     
+     #;(check-equal? (force (car (force t_2)))
+                   1)
+     (set-cell! 1 0)
+     (check-equal? (force (car (force (hash-ref *memo-table*
+                                                (node-id t_2)))))
+                   0))))
+
+(define timed-tests-8
+  (test-suite
+   "testing time to sort a 500 element list,~n 
+    trivially sorted (1's) with 100 elements mutated"
+   
+   #:before (lambda () (displayln "--> testing time to sort a 500 element list,
+--> all 1's with 100 mutated"))
+   #:after  (lambda () (displayln "timed-tests-8 tests finished"))
+   
+   ;; housekeeping
+   (hash-clear! *memo-table*)
+   (hash-clear! *cells*)
+   (set-box! cell-counter 0)
+   (set-box! stack '())
+   
+   ;; define our test input
+   (let* ([t (build-trivial-input 500)]
+          [t_2 (merge-sort t)]
+          [l (foo 100)])
+     
+     (displayln "--> time to sort")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (build-trivial-list 500))
+     (displayln "--> time to compute a second time")
+     (check-equal? (time (get-list-from-mergesort (force t_2)))
+                   (build-trivial-list 500))
+     (bar l 100)
+     (displayln "--> time to re-sort after mutation")
+     (check-equal? (time (get-list-from-mergesort 
+                          (force (hash-ref *memo-table* (node-id t_2)))))
                    0))))
 
