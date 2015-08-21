@@ -2,11 +2,11 @@
 Racket-based implementation of Adapton
 
 The purpose of this repo is to provide a home for the development of Adapton for 
-the Racket programming langauge. 
+the Racket programming language. 
 
 ## General
 
-Racket is a powerful functional langauge that can be found here:
+Racket is a powerful functional language that can be found here:
 http://racket-lang.org/
 
 Adapton provides a set of tools that the user can leverage to reason about his
@@ -58,26 +58,26 @@ contain your algorithm. Once your code is written, either import the "tools-for-
 file, or consider creating a new file for your tests that leverages the code in 
 the files related to testing.
 
-If you are using DrRacket, you can right click on any function and select "go 
-to source file" to open the file containing the function definition. 
+If you are using DrRacket, you can right click on any function and select `go 
+to source file` to open the file containing the function definition. 
 
 ## Graphing 
 
 There is code throughout the repo that builds a visual representation of the DCG
 of your program. Obviously this code will effect performance, and so can be turned 
-off by setting the parameter "graphing-on" to false (#f) in the file "graphing.rkt".
+off by setting the parameter `graphing-on` to false (`#f`) in the file `graphing.rkt`.
 If you choose to leave graphing enabled, the results of the graphing are 
-automatically stored in the file graph.gmv in the same directory as the "graphing.rkt"
-file. You can modifiy the location and name of this file in "graphing.rkt".
+automatically stored in the file `graph.gmv` in the same directory as the `graphing.rkt`
+file. You can modifiy the location and name of this file in `graphing.rkt`.
 
 To view the graph that is built you will need graphmovie, which can be downloaded 
 here: https://github.com/kyleheadley/graphmovie
 
-Once you have graphmovie download, simply open "graph.html" in your browser and open
-the .gmv file containing your graph. 
+Once you have graphmovie download, simply open `graph.html` in your browser and open
+the `.gmv` file containing your graph. 
 
-It is worth noting that when the graph.gmv file is cleared and a new graph is created
+It is worth noting that when the `graph.gmv` file is cleared and a new graph is created
 each time your code is compiled. If you do not re-compile your code, changes will 
-simply be added to the graph that currently exists in "graph.gmv". This means that you
+simply be added to the graph that currently exists in `graph.gmv`. This means that you
 perfrom some computations and load your DCG, and then go back and mutate your inputs. 
 This will dirty your DCG, which will be reflected in graph.gmv until you re-compile.
