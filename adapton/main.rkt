@@ -1,5 +1,5 @@
 #lang racket
- 
+
 ;; This file simply brings together everything implemented elsewhere
 ;; in the repo to one top-level file. All functions / structures / etc
 ;; defined in the repo are reachable from this file, other than anything
@@ -42,3 +42,8 @@
 
 ;; -- graphing
 ;; contains a number of utilities for visualizing adapton.
+
+(define/memo (fib n)
+  (if (<= n 1) 
+      1 
+      (+ (force (fib (- n 1))) (force (fib (- n 2))))))
