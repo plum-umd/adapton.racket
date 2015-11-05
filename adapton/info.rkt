@@ -15,4 +15,4 @@
 
 (define pkg-authors '(cmentzer))
 
-define scribblings '(("adapton.scrbl")))
+(define scribblings '(("adapton.scrbl")))
