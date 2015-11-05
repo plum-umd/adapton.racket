@@ -14,3 +14,5 @@
 (define blurb '("Adapton - Composable, Demand-Driven Incremental Computation"))
 
 (define pkg-authors '(cmentzer))
+
+define scribblings '(("adapton.scrbl")))
