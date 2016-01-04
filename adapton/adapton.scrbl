@@ -12,7 +12,7 @@
 
 @title[#:tag "top"]{@bold{Adapton}: Composable, Demand-Driven Incremental Computation}
 
-by Clayton Mentzer and Matt Hammer (@tt{cmentzer at ccs dot neu dot edu})
+by Clayton Mentzer and Matt Hammer (@t {cmentzer at ccs dot neu dot edu})
 
 Adapton is a library for demand driven incremental computation and dynamic programming
 The library provides drop-in replacement forms for defining Racket functions that memoize
@@ -42,7 +42,7 @@ node before we can use it. Each node created is placed into a global level hash-
 called "*memo-table*". Then, each time a node is created we can check if it exists in 
 memo-table already, and use its cached result. 
 
-@defexamples[#:eval the-eval
+@defexamples[#:eval evaluator
                     (define (fib n)
                       (if (<= n 1) 
                           1 
