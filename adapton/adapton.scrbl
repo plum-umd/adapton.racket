@@ -12,7 +12,7 @@
 
 @title[#:tag "top"]{@bold{Adapton}: Composable, Demand-Driven Incremental Computation}
 
-by Clayton Mentzer and Matt Hammer (@t {cmentzer at ccs dot neu dot edu})
+by Clayton Mentzer and Matt Hammer {cmentzer at ccs dot neu dot edu}
 
 Adapton is a library for demand driven incremental computation and dynamic programming
 The library provides drop-in replacement forms for defining Racket functions that memoize
