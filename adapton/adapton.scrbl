@@ -10,7 +10,7 @@
      (evaluator '(require "main.rkt"))
      evaluator))
 
-@title[#:tag "top"]{@bold{Adapton}: Composable, Demand-Driven Incremental Computation}
+@title[#:tag "top"]{Adapton: Composable, Demand-Driven Incremental Computation}
 
 by Clayton Mentzer and Matt Hammer cmentzer at ccs dot neu dot edu
 
