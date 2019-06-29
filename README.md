@@ -6,7 +6,7 @@ the Racket programming langauge.
 
 ## General
 
-Racket is a powerful functional langauge that can be found here:
+Racket is a powerful functional language that can be found here:
 http://racket-lang.org/
 
 Adapton provides a set of tools that the user can leverage to reason about his
@@ -45,7 +45,7 @@ be worth the effort.
 
 ## Understanding the code in this repo 
 
-The code in this repo is seperated into several files to make it more managable.
+The code in this repo is seperated into several files to make it more manageable.
 Each file in the repo has a brief comment at the top of the file that describes 
 the code stored within. In addition, each function within each file will have a 
 brief purpose statement and some information about the use of that file. Further,
